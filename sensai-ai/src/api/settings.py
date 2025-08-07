@@ -4,7 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 from functools import lru_cache
 from api.config import UPLOAD_FOLDER_NAME
-from phoenix.otel import register
+# Disabled OpenTelemetry/Phoenix tracing to avoid connection errors
+# from phoenix.otel import register
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = join(root_dir, ".env.aws")
@@ -40,16 +41,40 @@ def get_settings():
 
 settings = get_settings()
 
-if settings.phoenix_api_key is not None:
-    os.environ["PHOENIX_API_KEY"] = settings.phoenix_api_key
+# Disabled OpenTelemetry/Phoenix tracing to avoid connection errors
+# if settings.phoenix_api_key is not None:
+#     os.environ["PHOENIX_API_KEY"] = settings.phoenix_api_key
 
-tracer_provider = register(
-    protocol="http/protobuf",
-    project_name=f"sensai-{settings.env}",
-    auto_instrument=True,
-    batch=True,
-    endpoint=(
-        f"{settings.phoenix_endpoint}/v1/traces" if settings.phoenix_endpoint else None
-    ),
-)
-tracer = tracer_provider.get_tracer(__name__)
+# tracer_provider = register(
+#     protocol="http/protobuf",
+#     project_name=f"sensai-{settings.env}",
+#     auto_instrument=True,
+#     batch=True,
+#     endpoint=(
+#         f"{settings.phoenix_endpoint}/v1/traces" if settings.phoenix_endpoint else None
+#     ),
+# )
+# tracer = tracer_provider.get_tracer(__name__)
+
+# Dummy tracer to avoid import errors
+class DummyTracer:
+    def start_span(self, name, **kwargs):
+        return DummySpan()
+
+class DummySpan:
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        pass
+    
+    def set_attribute(self, key, value):
+        pass
+    
+    def set_status(self, status):
+        pass
+    
+    def record_exception(self, exception):
+        pass
+
+tracer = DummyTracer()
