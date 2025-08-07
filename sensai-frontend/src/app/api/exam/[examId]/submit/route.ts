@@ -10,19 +10,22 @@ export async function POST(
     const { examId } = await params;
     const body = await request.json();
 
-    const response = await fetch(`${API_BASE_URL}/api/exam/${examId}/submit?user_id=current_user`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...request.headers.get("authorization") && {
-          Authorization: request.headers.get("authorization")!
-        }
-      },
-      body: JSON.stringify({
-        answers: body.answers,
-        time_taken: body.time_taken
-      })
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/exam/${examId}/submit?user_id=current_user`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...request.headers.get("authorization") && {
+            Authorization: request.headers.get("authorization")!
+          }
+        },
+        body: JSON.stringify({
+          answers: body.answers,
+          time_taken: body.time_taken
+        })
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.json();

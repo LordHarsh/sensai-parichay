@@ -9,18 +9,23 @@ export async function GET(
   try {
     const { examId, sessionId } = await params;
 
-    const response = await fetch(`${API_BASE_URL}/api/exam/${examId}/results/${sessionId}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...request.headers.get("authorization") && {
-          Authorization: request.headers.get("authorization")!
+    const response = await fetch(
+      `${API_BASE_URL}/api/exam/${examId}/results/${sessionId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...request.headers.get("authorization") && {
+            Authorization: request.headers.get("authorization")!
+          }
         }
       }
-    });
+    );
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: "Failed to fetch exam results" }));
+      const errorData = await response
+        .json()
+        .catch(() => ({ detail: "Failed to fetch exam results" }));
       return NextResponse.json(
         { error: errorData.detail || "Failed to fetch exam results" },
         { status: response.status }
