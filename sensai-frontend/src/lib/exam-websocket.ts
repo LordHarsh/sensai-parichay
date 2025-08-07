@@ -3,7 +3,9 @@ import { ExamEvent, ExamNotification } from '@/types/exam';
 export class ExamWebSocket {
   private ws: WebSocket | null = null;
   private examId: string;
-  private token: string;
+  private userId: string;
+  private token?: string;
+  private sessionId?: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
@@ -13,10 +15,16 @@ export class ExamWebSocket {
   public onExamUpdate: ((data: any) => void) | null = null;
   public onVideoDataAck: ((timestamp: number, status: string) => void) | null = null;
   public onVideoControlAck: ((status: string) => void) | null = null;
+  public onSessionEstablished: ((sessionId: string) => void) | null = null;
 
-  constructor(examId: string, token: string) {
+  constructor(examId: string, userId: string, token?: string) {
     this.examId = examId;
+    this.userId = userId;
     this.token = token;
+  }
+
+  getSessionId(): string | undefined {
+    return this.sessionId;
   }
 
   async connect(): Promise<void> {
@@ -31,7 +39,16 @@ export class ExamWebSocket {
       const backendHost = process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8000';
       const protocol = backendHost.startsWith('wss:') ? 'wss:' : 'ws:';
       const host = backendHost.replace(/^wss?:\/\//, '');
-      const wsUrl = `${protocol}//${host}/ws/exam/${this.examId}/ws?token=${this.token}`;
+      
+      // Build parameters - include both user_id and token if available
+      const params = new URLSearchParams();
+      params.append('user_id', this.userId);
+      if (this.token) {
+        params.append('token', this.token);
+      }
+      
+      const wsUrl = `${protocol}//${host}/ws/exam/${this.examId}/ws?${params.toString()}`;
+      console.log('Connecting to WebSocket with user_id:', this.userId, 'and token:', this.token ? 'available' : 'not available');
       
       this.ws = new WebSocket(wsUrl);
       
@@ -94,7 +111,13 @@ export class ExamWebSocket {
     switch (data.type) {
       case 'connection_established':
         console.log('WebSocket connection confirmed:', data.message);
-        // Connection is ready, you can trigger any initialization here
+        this.sessionId = data.session_id;
+        console.log('Session ID received:', this.sessionId);
+        
+        // Notify that session is established
+        if (this.onSessionEstablished && this.sessionId) {
+          this.onSessionEstablished(this.sessionId);
+        }
         break;
         
       case 'exam_event_ack':

@@ -47,15 +47,15 @@ export default function QuestionPanel({
           <div className="space-y-3">
             {currentQuestion.options?.map((option, index) => (
               <label
-                key={index}
+                key={option.id}
                 className="flex items-start space-x-3 p-4 rounded-lg border border-gray-700 hover:border-gray-600 hover:bg-gray-800/50 cursor-pointer transition-all duration-200 group"
               >
                 <div className="relative flex-shrink-0 mt-0.5">
                   <input
                     type="radio"
                     name={currentQuestion.id}
-                    value={option}
-                    checked={answers[currentQuestion.id] === option}
+                    value={option.id}
+                    checked={answers[currentQuestion.id] === option.id}
                     onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
                     className="sr-only"
                   />
@@ -69,7 +69,7 @@ export default function QuestionPanel({
                     )}
                   </div>
                 </div>
-                <span className="text-gray-100 leading-relaxed">{option}</span>
+                <span className="text-gray-100 leading-relaxed">{option.text}</span>
               </label>
             ))}
           </div>

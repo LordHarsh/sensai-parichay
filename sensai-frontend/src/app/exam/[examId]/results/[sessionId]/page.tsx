@@ -240,19 +240,21 @@ export default function ExamResultsPage() {
                       <div className="mb-3">
                         <p className="text-gray-400 text-sm mb-2">Options:</p>
                         <div className="space-y-1">
-                          {question.options.map((option: string, optIndex: number) => {
+                          {question.options.map((option: any, optIndex: number) => {
                             const optionLabel = String.fromCharCode(65 + optIndex);
+                            const optionText = typeof option === 'string' ? option : option.text;
+                            const optionId = typeof option === 'string' ? optionLabel : option.id;
                             return (
                               <div key={optIndex} className={`p-2 rounded text-sm ${
-                                userAnswer === optionLabel ? 'bg-blue-900/30 border border-blue-700' : 'bg-gray-700'
+                                userAnswer === optionId ? 'bg-blue-900/30 border border-blue-700' : 'bg-gray-700'
                               } ${
-                                question.correct_answer === optionLabel ? 'border-emerald-600 bg-emerald-900/20' : ''
+                                question.correct_answer === optionId ? 'border-emerald-600 bg-emerald-900/20' : ''
                               }`}>
-                                <span className="font-medium">{optionLabel}.</span> {option}
-                                {question.correct_answer === optionLabel && (
+                                <span className="font-medium">{optionLabel}.</span> {optionText}
+                                {question.correct_answer === optionId && (
                                   <span className="text-emerald-400 ml-2">(Correct)</span>
                                 )}
-                                {userAnswer === optionLabel && userAnswer !== question.correct_answer && (
+                                {userAnswer === optionId && userAnswer !== question.correct_answer && (
                                   <span className="text-blue-400 ml-2">(Your answer)</span>
                                 )}
                               </div>

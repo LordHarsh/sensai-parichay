@@ -4,16 +4,46 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ExamQuestion } from "@/types/exam";
+import { useAuth } from "@/lib/auth";
+import { useSchools } from "@/lib/api";
 
 export default function CreateExamPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { user } = useAuth();
+  const { schools } = useSchools();
   
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState(60); // minutes
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
+  
+  // Cheating detection settings
+  const [monitoringSettings, setMonitoringSettings] = useState({
+    video_recording: true,
+    audio_recording: true,
+    screen_recording: false,
+    keystroke_logging: true,
+    mouse_tracking: true,
+    face_detection: true,
+    gaze_tracking: false,
+    network_monitoring: true
+  });
+  
+  // Exam behavior settings
+  const [examSettings, setExamSettings] = useState({
+    allow_tab_switch: false,
+    max_tab_switches: 3,
+    allow_copy_paste: false,
+    require_camera: true,
+    require_microphone: true,
+    fullscreen_required: true,
+    auto_submit: true,
+    shuffle_questions: false,
+    show_timer: true
+  });
 
   const addQuestion = (type: ExamQuestion['type']) => {
     const newQuestion: ExamQuestion = {
@@ -21,7 +51,15 @@ export default function CreateExamPage() {
       type,
       question: "",
       points: 1,
-      ...(type === 'multiple_choice' ? { options: ["", "", "", ""], correct_answer: "" } : {})
+      ...(type === 'multiple_choice' ? { 
+        options: [
+          { id: `opt_${Date.now()}_1`, text: "", is_correct: false },
+          { id: `opt_${Date.now()}_2`, text: "", is_correct: false },
+          { id: `opt_${Date.now()}_3`, text: "", is_correct: false },
+          { id: `opt_${Date.now()}_4`, text: "", is_correct: false }
+        ], 
+        correct_answer: "" 
+      } : {})
     };
     
     setQuestions(prev => [...prev, newQuestion]);
@@ -39,8 +77,21 @@ export default function CreateExamPage() {
     setQuestions(prev => prev.map((q, i) => {
       if (i === questionIndex && q.type === 'multiple_choice' && q.options) {
         const newOptions = [...q.options];
-        newOptions[optionIndex] = value;
+        newOptions[optionIndex] = { ...newOptions[optionIndex], text: value };
         return { ...q, options: newOptions };
+      }
+      return q;
+    }));
+  };
+
+  const setCorrectAnswer = (questionIndex: number, optionId: string) => {
+    setQuestions(prev => prev.map((q, i) => {
+      if (i === questionIndex && q.type === 'multiple_choice' && q.options) {
+        const newOptions = q.options.map(opt => ({
+          ...opt,
+          is_correct: opt.id === optionId
+        }));
+        return { ...q, options: newOptions, correct_answer: optionId };
       }
       return q;
     }));
@@ -60,34 +111,17 @@ export default function CreateExamPage() {
         description,
         duration,
         questions,
-        settings: {
-          allow_tab_switch: false,
-          max_tab_switches: 3,
-          allow_copy_paste: false,
-          require_camera: true,
-          require_microphone: true,
-          fullscreen_required: true,
-          auto_submit: true,
-          shuffle_questions: false,
-          show_timer: true
-        },
-        monitoring: {
-          video_recording: true,
-          audio_recording: true,
-          screen_recording: false,
-          keystroke_logging: true,
-          mouse_tracking: true,
-          face_detection: true,
-          gaze_tracking: false,
-          network_monitoring: true
-        }
+        settings: examSettings,
+        monitoring: monitoringSettings,
+        org_id: selectedOrgId,
+        role: "teacher"
       };
 
       const response = await fetch('/api/exam/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.accessToken}`,
+          'x-user-id': user?.id || '',
         },
         body: JSON.stringify(examData),
       });
@@ -97,7 +131,7 @@ export default function CreateExamPage() {
       }
 
       const result = await response.json();
-      router.push(`/exam/${result.id}`);
+      router.push(`/exam/${result.id}/teacher`);
       
     } catch (error) {
       console.error('Error creating exam:', error);
@@ -227,17 +261,17 @@ export default function CreateExamPage() {
                           <label className="block text-sm font-medium mb-2">Options *</label>
                           <div className="space-y-2">
                             {question.options.map((option, optionIndex) => (
-                              <div key={optionIndex} className="flex items-center space-x-3">
+                              <div key={option.id} className="flex items-center space-x-3">
                                 <input
                                   type="radio"
                                   name={`correct_${question.id}`}
-                                  checked={question.correct_answer === option}
-                                  onChange={() => updateQuestion(index, { correct_answer: option })}
+                                  checked={question.correct_answer === option.id}
+                                  onChange={() => setCorrectAnswer(index, option.id)}
                                   className="text-blue-600"
                                 />
                                 <input
                                   type="text"
-                                  value={option}
+                                  value={option.text}
                                   onChange={(e) => updateOption(index, optionIndex, e.target.value)}
                                   placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
                                   className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
@@ -289,6 +323,295 @@ export default function CreateExamPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Organization Selection */}
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Organization</h2>
+            <div>
+              <label className="block text-sm font-medium mb-2">Select Organization (Optional)</label>
+              <select
+                value={selectedOrgId || ""}
+                onChange={(e) => setSelectedOrgId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Personal Exam (No Organization)</option>
+                {schools?.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Exam Settings */}
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Exam Behavior Settings</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Allow Tab Switching</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.allow_tab_switch}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      allow_tab_switch: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Allow Copy/Paste</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.allow_copy_paste}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      allow_copy_paste: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Require Camera</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.require_camera}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      require_camera: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Require Microphone</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.require_microphone}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      require_microphone: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Fullscreen Required</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.fullscreen_required}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      fullscreen_required: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Auto Submit</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.auto_submit}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      auto_submit: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Shuffle Questions</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.shuffle_questions}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      shuffle_questions: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Show Timer</label>
+                  <input
+                    type="checkbox"
+                    checked={examSettings.show_timer}
+                    onChange={(e) => setExamSettings(prev => ({
+                      ...prev,
+                      show_timer: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {examSettings.allow_tab_switch && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium mb-2">Maximum Tab Switches</label>
+                <input
+                  type="number"
+                  value={examSettings.max_tab_switches}
+                  onChange={(e) => setExamSettings(prev => ({
+                    ...prev,
+                    max_tab_switches: Number(e.target.value)
+                  }))}
+                  min="1"
+                  max="10"
+                  className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Monitoring Settings */}
+          <div className="bg-gray-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Cheating Detection & Monitoring</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Video Recording</label>
+                    <p className="text-xs text-gray-400">Record student's video feed</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.video_recording}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      video_recording: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Audio Recording</label>
+                    <p className="text-xs text-gray-400">Record ambient audio</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.audio_recording}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      audio_recording: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Screen Recording</label>
+                    <p className="text-xs text-gray-400">Record screen activity</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.screen_recording}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      screen_recording: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Keystroke Logging</label>
+                    <p className="text-xs text-gray-400">Detect typing anomalies</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.keystroke_logging}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      keystroke_logging: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Mouse Tracking</label>
+                    <p className="text-xs text-gray-400">Monitor mouse movements</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.mouse_tracking}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      mouse_tracking: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Face Detection</label>
+                    <p className="text-xs text-gray-400">Ensure student presence</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.face_detection}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      face_detection: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Gaze Tracking</label>
+                    <p className="text-xs text-gray-400">Monitor eye movement</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.gaze_tracking}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      gaze_tracking: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Network Monitoring</label>
+                    <p className="text-xs text-gray-400">Detect suspicious requests</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={monitoringSettings.network_monitoring}
+                    onChange={(e) => setMonitoringSettings(prev => ({
+                      ...prev,
+                      network_monitoring: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-center space-x-4">
