@@ -49,6 +49,7 @@ export default function ExamResultsPage() {
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -186,6 +187,59 @@ export default function ExamResultsPage() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const generateReport = async () => {
+    if (!session?.user?.id && !session?.user?.email) {
+      alert('Please log in to generate a report');
+      return;
+    }
+
+    try {
+      setGeneratingReport(true);
+      
+      const response = await fetch(`http://localhost:8000/api/exam/generate-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': session?.user?.id || session?.user?.email || '',
+        },
+        body: JSON.stringify({
+          exam_id: examId,
+          session_id: sessionId,
+          report_type: 'comprehensive',
+          include_analytics: true,
+          include_questions: true,
+          include_video_info: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Server returned ${response.status}`);
+      }
+
+      // Create blob from response and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `SENSAI_Report_${results?.exam_title}_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert(`Failed to generate report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   if (isLoading) {
@@ -698,7 +752,27 @@ export default function ExamResultsPage() {
         )}
 
         {/* Action Buttons */}
-        <div className="text-center">
+        <div className="text-center space-x-4">
+          <button
+            onClick={generateReport}
+            disabled={generatingReport}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors inline-flex items-center"
+          >
+            {generatingReport ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Generating Report...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Generate Report
+              </>
+            )}
+          </button>
+          
           <button
             onClick={() => router.push('/exam')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"

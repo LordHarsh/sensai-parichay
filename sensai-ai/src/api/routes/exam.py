@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi.responses import FileResponse
 from api.db import (
     exams_table_name,
     exam_sessions_table_name,
@@ -10,7 +11,16 @@ from typing import List, Optional
 import json
 import uuid
 import os
+import tempfile
+import base64
 from datetime import datetime
+import weasyprint
+from jinja2 import Template
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import numpy as np
+from io import BytesIO
 from api.models import (
     CreateExamRequest,
     ExamSubmissionRequest, 
@@ -22,6 +32,7 @@ from api.models import (
     ExamEvaluationRequest,
     ExamEvaluationReport
 )
+from pydantic import BaseModel
 from api.utils.db import get_new_db_connection
 from api.utils.event_scoring import EventScorer
 from api.config import (
@@ -1019,3 +1030,1277 @@ async def get_exam_video(exam_id: str, session_id: str, download: bool = False, 
     except Exception as e:
         print(f"Error serving video: {e}")
         raise HTTPException(status_code=500, detail="Failed to serve video")
+
+
+class ReportGenerationRequest(BaseModel):
+    exam_id: str
+    session_id: str
+    report_type: str = "comprehensive"  # comprehensive, summary, detailed
+    include_analytics: bool = True
+    include_questions: bool = True
+    include_video_info: bool = True
+
+
+@router.post("/generate-report", response_model=dict)
+async def generate_report(
+    request: ReportGenerationRequest,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate a beautiful PDF report using ChatGPT API for summaries and insights
+    """
+    try:
+        from api.llm import evaluate_exam_with_openai
+        
+        print(f"Generating report for exam {request.exam_id}, session {request.session_id}")
+        
+        # Get OpenAI API key
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Get comprehensive exam data
+            await cursor.execute(
+                f"""SELECT s.*, e.title, e.description, e.duration, e.questions, u.email, u.first_name, u.last_name,
+                           e.created_by FROM {exam_sessions_table_name} s
+                    JOIN {exams_table_name} e ON s.exam_id = e.id
+                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    WHERE s.id = ? AND s.exam_id = ?""",
+                (request.session_id, request.exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            # Check permissions - only exam creator or student can generate report
+            exam_creator_id = session_row[17]  # e.created_by
+            session_user_id = session_row[2]   # s.user_id
+            
+            if user_id != exam_creator_id and str(user_id) != str(session_user_id):
+                raise HTTPException(status_code=403, detail="Not authorized to generate this report")
+            
+            # Parse exam data
+            exam_title = session_row[11]
+            exam_description = session_row[12] 
+            duration = session_row[13]
+            questions = json.loads(session_row[14])
+            answers = json.loads(session_row[6] or "{}")
+            score = session_row[7] or 0
+            
+            # Calculate time taken
+            start_time = session_row[3] if session_row[3] else datetime.now()
+            end_time = session_row[4] if session_row[4] else datetime.now()
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
+            time_taken_seconds = (end_time - start_time).total_seconds()
+            
+            # Create user display name
+            user_display = "Student"
+            if session_row[15]:  # email
+                if session_row[16] and session_row[17]:  # first_name and last_name
+                    user_display = f"{session_row[16]} {session_row[17]}"
+                elif session_row[16]:
+                    user_display = session_row[16]
+                else:
+                    user_display = session_row[15]
+            
+            # Get analytics data if requested
+            analytics_data = None
+            if request.include_analytics and user_id == exam_creator_id:
+                try:
+                    analytics = await get_exam_analytics(request.exam_id, request.session_id, user_id)
+                    analytics_data = analytics.dict()
+                except:
+                    analytics_data = None
+            
+            # Get events summary
+            await cursor.execute(
+                f"""SELECT event_type, COUNT(*) as count
+                    FROM {exam_events_table_name}
+                    WHERE session_id = ?
+                    GROUP BY event_type""",
+                (request.session_id,)
+            )
+            
+            events_summary = {}
+            async for row in cursor:
+                events_summary[row[0]] = row[1]
+            
+            # Generate AI evaluation using ChatGPT
+            evaluation_data = await generate_ai_summaries(
+                openai_api_key,
+                exam_title,
+                user_display, 
+                score,
+                questions,
+                answers,
+                time_taken_seconds,
+                events_summary,
+                analytics_data
+            )
+            
+            # Generate charts
+            charts = generate_charts(evaluation_data)
+            
+            # Generate PDF report
+            pdf_path = await create_pdf_report(
+                exam_title,
+                user_display,
+                score,
+                start_time,
+                end_time,
+                time_taken_seconds,
+                questions,
+                answers,
+                events_summary,
+                analytics_data,
+                evaluation_data,
+                charts,
+                request
+            )
+            
+            # Return PDF file
+            return FileResponse(
+                pdf_path,
+                media_type='application/pdf',
+                filename=f"SENSAI_Report_{exam_title}_{user_display}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                headers={"Content-Disposition": f"attachment; filename=SENSAI_Report_{exam_title}_{user_display}.pdf"}
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+
+
+async def generate_ai_summaries(
+    api_key: str,
+    exam_title: str,
+    student_name: str,
+    score: float,
+    questions: list,
+    answers: dict,
+    time_taken: float,
+    events_summary: dict,
+    analytics_data: dict = None
+) -> dict:
+    """Generate structured AI evaluation using ChatGPT with detailed criteria"""
+    
+    try:
+        import openai
+        client = openai.AsyncOpenAI(api_key=api_key)
+        
+        # Prepare detailed question analysis
+        question_details = []
+        for i, question in enumerate(questions, 1):
+            question_id = question.get('id', f'q{i}')
+            user_answer = answers.get(question_id, '')
+            correct_answer = question.get('correct_answer', '')
+            
+            question_details.append({
+                "question_number": i,
+                "question_text": question.get('question', ''),
+                "question_type": question.get('type', 'text'),
+                "user_answer": user_answer,
+                "correct_answer": correct_answer,
+                "points": question.get('points', 1)
+            })
+        
+        # Generate comprehensive structured evaluation
+        evaluation_prompt = f"""
+        You are an AI education analyst. Analyze this exam performance and return a detailed JSON evaluation.
+
+        EXAM DATA:
+        - Title: {exam_title}
+        - Student: {student_name}
+        - Score: {score}%
+        - Time taken: {time_taken/60:.1f} minutes
+        - Questions: {len(questions)}
+        - Answered: {len([a for a in answers.values() if a.strip()])}
+        
+        QUESTIONS AND ANSWERS:
+        {json.dumps(question_details, indent=2)}
+        
+        Return ONLY a valid JSON object with this exact structure:
+        {{
+            "overall_performance": {{
+                "grade_level": "A/B/C/D/F",
+                "performance_category": "Excellent/Good/Satisfactory/Needs Improvement/Poor",
+                "strengths": ["strength1", "strength2", "strength3"],
+                "weaknesses": ["weakness1", "weakness2", "weakness3"],
+                "time_efficiency": "Excellent/Good/Average/Poor",
+                "completion_rate": 95.5
+            }},
+            "question_analysis": [
+                {{
+                    "question_number": 1,
+                    "status": "correct/incorrect/partial",
+                    "criteria_scores": {{
+                        "accuracy": 85,
+                        "completeness": 90,
+                        "clarity": 80,
+                        "depth": 75
+                    }},
+                    "feedback": "Detailed feedback for this question",
+                    "improvement_tips": ["tip1", "tip2"],
+                    "difficulty_level": "Easy/Medium/Hard",
+                    "time_spent_estimate": "Appropriate/Too Fast/Too Slow"
+                }}
+            ],
+            "skill_assessment": {{
+                "knowledge_areas": [
+                    {{
+                        "area": "Conceptual Understanding",
+                        "score": 82,
+                        "level": "Proficient",
+                        "evidence": ["specific examples"]
+                    }},
+                    {{
+                        "area": "Problem Solving",
+                        "score": 75,
+                        "level": "Developing",
+                        "evidence": ["specific examples"]
+                    }}
+                ],
+                "cognitive_skills": {{
+                    "critical_thinking": 80,
+                    "analytical_reasoning": 75,
+                    "application": 85,
+                    "synthesis": 70
+                }}
+            }},
+            "learning_recommendations": {{
+                "immediate_actions": [
+                    {{
+                        "priority": "High/Medium/Low",
+                        "action": "Specific action to take",
+                        "timeline": "1-2 weeks"
+                    }}
+                ],
+                "study_plan": {{
+                    "focus_areas": ["area1", "area2"],
+                    "recommended_resources": ["resource1", "resource2"],
+                    "practice_exercises": ["exercise1", "exercise2"]
+                }},
+                "next_steps": ["step1", "step2", "step3"]
+            }},
+            "performance_metrics": {{
+                "accuracy_by_type": {{
+                    "multiple_choice": 85,
+                    "short_answer": 70,
+                    "essay": 60
+                }},
+                "time_distribution": {{
+                    "planning": 10,
+                    "execution": 75,
+                    "review": 15
+                }},
+                "confidence_indicators": {{
+                    "certainty_level": 75,
+                    "revision_frequency": "Low/Medium/High"
+                }}
+            }}
+        }}
+        """
+        
+        evaluation_response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert educational analyst. Always return valid JSON only."},
+                {"role": "user", "content": evaluation_prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.3
+        )
+        
+        # Parse JSON response
+        try:
+            evaluation_json = json.loads(evaluation_response.choices[0].message.content)
+            return evaluation_json
+        except json.JSONDecodeError:
+            print("Failed to parse JSON from OpenAI, using fallback")
+            return generate_fallback_evaluation(exam_title, student_name, score, questions, answers, time_taken)
+        
+    except Exception as e:
+        print(f"Error generating AI evaluation: {e}")
+        return generate_fallback_evaluation(exam_title, student_name, score, questions, answers, time_taken)
+
+
+def generate_fallback_evaluation(exam_title: str, student_name: str, score: float, questions: list, answers: dict, time_taken: float) -> dict:
+    """Generate a structured fallback evaluation when AI fails"""
+    
+    # Calculate basic metrics
+    total_questions = len(questions)
+    answered_questions = len([a for a in answers.values() if a.strip()])
+    completion_rate = (answered_questions / total_questions * 100) if total_questions > 0 else 0
+    
+    # Determine grade level
+    if score >= 90: grade_level, performance_category = "A", "Excellent"
+    elif score >= 80: grade_level, performance_category = "B", "Good"  
+    elif score >= 70: grade_level, performance_category = "C", "Satisfactory"
+    elif score >= 60: grade_level, performance_category = "D", "Needs Improvement"
+    else: grade_level, performance_category = "F", "Poor"
+    
+    # Generate question analysis
+    question_analysis = []
+    for i, question in enumerate(questions, 1):
+        question_id = question.get('id', f'q{i}')
+        user_answer = answers.get(question_id, '')
+        correct_answer = question.get('correct_answer', '')
+        
+        # Determine status
+        if question.get('type') == 'multiple_choice':
+            status = "correct" if user_answer == correct_answer else "incorrect"
+            accuracy = 100 if status == "correct" else 0
+        else:
+            status = "partial" if user_answer.strip() else "incorrect"
+            accuracy = 75 if user_answer.strip() else 0
+            
+        question_analysis.append({
+            "question_number": i,
+            "status": status,
+            "criteria_scores": {
+                "accuracy": accuracy,
+                "completeness": 80 if user_answer.strip() else 0,
+                "clarity": 75 if user_answer.strip() else 0,
+                "depth": 70 if len(user_answer.strip()) > 20 else 40
+            },
+            "feedback": f"Question {i}: {'Good work!' if status == 'correct' else 'Review this concept'}",
+            "improvement_tips": ["Review course materials", "Practice similar problems"],
+            "difficulty_level": "Medium",
+            "time_spent_estimate": "Appropriate"
+        })
+    
+    return {
+        "overall_performance": {
+            "grade_level": grade_level,
+            "performance_category": performance_category,
+            "strengths": ["Exam completion", "Basic understanding"] if score >= 50 else ["Attempted questions"],
+            "weaknesses": ["Accuracy improvement needed"] if score < 80 else ["Minor concept gaps"],
+            "time_efficiency": "Good" if time_taken < 3600 else "Average",
+            "completion_rate": completion_rate
+        },
+        "question_analysis": question_analysis,
+        "skill_assessment": {
+            "knowledge_areas": [
+                {
+                    "area": "Conceptual Understanding",
+                    "score": min(score + 5, 100),
+                    "level": "Proficient" if score >= 70 else "Developing",
+                    "evidence": ["Question responses demonstrate basic comprehension"]
+                },
+                {
+                    "area": "Problem Solving", 
+                    "score": max(score - 10, 0),
+                    "level": "Developing" if score >= 60 else "Beginning",
+                    "evidence": ["Applied knowledge to solve problems"]
+                }
+            ],
+            "cognitive_skills": {
+                "critical_thinking": int(score * 0.8),
+                "analytical_reasoning": int(score * 0.9), 
+                "application": int(score * 1.1) if score < 90 else 100,
+                "synthesis": int(score * 0.7)
+            }
+        },
+        "learning_recommendations": {
+            "immediate_actions": [
+                {
+                    "priority": "High",
+                    "action": "Review incorrect answers and understand mistakes",
+                    "timeline": "1 week"
+                },
+                {
+                    "priority": "Medium", 
+                    "action": "Practice similar questions to reinforce learning",
+                    "timeline": "2 weeks"
+                }
+            ],
+            "study_plan": {
+                "focus_areas": ["Course fundamentals", "Problem-solving techniques"],
+                "recommended_resources": ["Textbook chapters", "Online practice tests"],
+                "practice_exercises": ["Similar question types", "Timed practice sessions"]
+            },
+            "next_steps": ["Schedule study sessions", "Seek help if needed", "Take practice tests"]
+        },
+        "performance_metrics": {
+            "accuracy_by_type": {
+                "multiple_choice": score,
+                "short_answer": max(score - 10, 0),
+                "essay": max(score - 20, 0)
+            },
+            "time_distribution": {
+                "planning": 15,
+                "execution": 70, 
+                "review": 15
+            },
+            "confidence_indicators": {
+                "certainty_level": int(score * 0.8),
+                "revision_frequency": "Low" if score >= 80 else "Medium"
+            }
+        }
+    }
+
+
+def generate_charts(evaluation_data: dict) -> dict:
+    """Generate base64-encoded charts for the PDF report"""
+    
+    charts = {}
+    
+    try:
+        # Set style for better looking charts
+        plt.style.use('seaborn-v0_8')
+        
+        # 1. Performance Overview Pie Chart
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Extract skill scores
+        skills = evaluation_data.get('skill_assessment', {}).get('cognitive_skills', {})
+        if skills:
+            labels = [skill.replace('_', ' ').title() for skill in skills.keys()]
+            values = list(skills.values())
+            colors = ['#2563eb', '#059669', '#d97706', '#dc2626']
+            
+            wedges, texts, autotexts = ax.pie(values, labels=labels, autopct='%1.1f%%', 
+                                            colors=colors, startangle=90)
+            
+            # Enhance text
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+            
+            ax.set_title('Cognitive Skills Assessment', fontsize=16, fontweight='bold', pad=20)
+            
+            # Save to base64
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+            buffer.seek(0)
+            charts['cognitive_skills'] = base64.b64encode(buffer.getvalue()).decode()
+            plt.close()
+        
+        # 2. Question Analysis Bar Chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        question_analysis = evaluation_data.get('question_analysis', [])
+        if question_analysis:
+            question_nums = [qa['question_number'] for qa in question_analysis]
+            accuracy_scores = [qa['criteria_scores']['accuracy'] for qa in question_analysis]
+            completeness_scores = [qa['criteria_scores']['completeness'] for qa in question_analysis]
+            
+            x = np.arange(len(question_nums))
+            width = 0.35
+            
+            bars1 = ax.bar(x - width/2, accuracy_scores, width, label='Accuracy', color='#2563eb', alpha=0.8)
+            bars2 = ax.bar(x + width/2, completeness_scores, width, label='Completeness', color='#059669', alpha=0.8)
+            
+            ax.set_xlabel('Question Number', fontweight='bold')
+            ax.set_ylabel('Score (%)', fontweight='bold')
+            ax.set_title('Question-by-Question Performance Analysis', fontsize=16, fontweight='bold', pad=20)
+            ax.set_xticks(x)
+            ax.set_xticklabels([f'Q{num}' for num in question_nums])
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(0, 100)
+            
+            # Add value labels on bars
+            for bar in bars1 + bars2:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 1,
+                       f'{height:.0f}', ha='center', va='bottom', fontweight='bold')
+            
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+            buffer.seek(0)
+            charts['question_analysis'] = base64.b64encode(buffer.getvalue()).decode()
+            plt.close()
+        
+        # 3. Knowledge Areas Radar Chart
+        knowledge_areas = evaluation_data.get('skill_assessment', {}).get('knowledge_areas', [])
+        if knowledge_areas:
+            fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+            
+            categories = [area['area'] for area in knowledge_areas]
+            values = [area['score'] for area in knowledge_areas]
+            
+            # Add first value to close the circle
+            values += [values[0]]
+            
+            # Compute angles
+            angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
+            angles += [angles[0]]
+            
+            # Plot
+            ax.plot(angles, values, 'o-', linewidth=2, color='#2563eb')
+            ax.fill(angles, values, alpha=0.25, color='#2563eb')
+            
+            # Add labels
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(categories)
+            ax.set_ylim(0, 100)
+            ax.set_title('Knowledge Areas Assessment', fontsize=16, fontweight='bold', pad=30)
+            ax.grid(True)
+            
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+            buffer.seek(0)
+            charts['knowledge_areas'] = base64.b64encode(buffer.getvalue()).decode()
+            plt.close()
+        
+        # 4. Performance Metrics Gauge Chart
+        overall_perf = evaluation_data.get('overall_performance', {})
+        completion_rate = overall_perf.get('completion_rate', 0)
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Create gauge chart
+        theta = np.linspace(0, np.pi, 100)
+        r = np.ones_like(theta)
+        
+        ax = plt.subplot(projection='polar')
+        ax.set_theta_zero_location('N')
+        ax.set_theta_direction(-1)
+        ax.set_thetamax(180)
+        
+        # Background
+        ax.bar(theta, r, width=np.pi/100, color='lightgray', alpha=0.3)
+        
+        # Fill based on completion rate
+        completion_theta = np.linspace(0, np.pi * (completion_rate/100), 50)
+        if completion_rate >= 80:
+            color = '#059669'
+        elif completion_rate >= 60:
+            color = '#d97706'
+        else:
+            color = '#dc2626'
+            
+        ax.bar(completion_theta, np.ones_like(completion_theta), 
+               width=np.pi/50, color=color, alpha=0.8)
+        
+        ax.set_ylim(0, 1)
+        ax.set_rticks([])
+        ax.set_title(f'Completion Rate: {completion_rate:.1f}%', 
+                    fontsize=16, fontweight='bold', pad=30)
+        
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+        buffer.seek(0)
+        charts['completion_gauge'] = base64.b64encode(buffer.getvalue()).decode()
+        plt.close()
+        
+    except Exception as e:
+        print(f"Error generating charts: {e}")
+        # Return empty dict if chart generation fails
+        return {}
+    
+    return charts
+
+
+async def create_pdf_report(
+    exam_title: str,
+    student_name: str,
+    score: float,
+    start_time: datetime,
+    end_time: datetime,
+    time_taken: float,
+    questions: list,
+    answers: dict,
+    events_summary: dict,
+    analytics_data: dict,
+    evaluation_data: dict,
+    charts: dict,
+    request: ReportGenerationRequest
+) -> str:
+    """Create a beautiful PDF report using WeasyPrint"""
+    
+    # Enhanced HTML template for detailed report
+    html_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>SENSAI Detailed Performance Report</title>
+        <style>
+            @page {
+                size: A4;
+                margin: 0.75in;
+                @top-center {
+                    content: "SENSAI Detailed Report - {{ exam_title }}";
+                    font-size: 10px;
+                    color: #666;
+                }
+                @bottom-center {
+                    content: "Page " counter(page);
+                    font-size: 10px;
+                    color: #666;
+                }
+            }
+            
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.5;
+                color: #2c3e50;
+                margin: 0;
+                padding: 0;
+                font-size: 12px;
+            }
+            
+            .header {
+                text-align: center;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px 20px;
+                border-radius: 12px;
+                margin-bottom: 25px;
+            }
+            
+            .header h1 {
+                font-size: 32px;
+                margin: 0 0 8px 0;
+                font-weight: 700;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+            
+            .header .subtitle {
+                font-size: 16px;
+                opacity: 0.9;
+            }
+            
+            .exam-overview {
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 25px;
+                border-left: 5px solid #3b82f6;
+                max-width: 100%;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+            
+            .exam-overview h2 {
+                color: #1e40af;
+                margin: 0 0 20px 0;
+                font-size: 22px;
+                font-weight: 600;
+            }
+            
+            .overview-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                max-width: 100%;
+            }
+            
+            .overview-item {
+                text-align: center;
+                background: white;
+                padding: 12px 8px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                min-width: 0; /* Allows flex items to shrink below their content size */
+                overflow: hidden;
+            }
+            
+            .overview-value {
+                font-size: 16px;
+                font-weight: bold;
+                color: #1e40af;
+                display: block;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                line-height: 1.2;
+            }
+            
+            .overview-label {
+                font-size: 11px;
+                color: #64748b;
+                margin-top: 4px;
+                font-weight: 500;
+            }
+            
+            .grade-banner {
+                text-align: center;
+                background: {{ grade_gradient }};
+                color: white;
+                padding: 30px;
+                border-radius: 15px;
+                margin: 25px 0;
+                position: relative;
+                overflow: hidden;
+            }
+            
+            .grade-banner::before {
+                content: '';
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                animation: shimmer 3s ease-in-out infinite;
+            }
+            
+            @keyframes shimmer {
+                0%, 100% { transform: rotate(0deg); }
+                50% { transform: rotate(180deg); }
+            }
+            
+            .grade-large {
+                font-size: 54px;
+                font-weight: 800;
+                margin: 15px 0;
+                text-shadow: 0 3px 6px rgba(0,0,0,0.2);
+                position: relative;
+                z-index: 1;
+            }
+            
+            .grade-label {
+                font-size: 20px;
+                opacity: 0.95;
+                position: relative;
+                z-index: 1;
+            }
+            
+            .section {
+                margin-bottom: 30px;
+                break-inside: avoid-page;
+            }
+            
+            .section-title {
+                color: #1e40af;
+                font-size: 20px;
+                font-weight: 600;
+                border-bottom: 3px solid #3b82f6;
+                padding-bottom: 8px;
+                margin-bottom: 20px;
+                display: flex;
+                align-items: center;
+            }
+            
+            .section-title .emoji {
+                margin-right: 10px;
+                font-size: 24px;
+            }
+            
+            .chart-container {
+                text-align: center;
+                margin: 20px 0;
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            
+            .chart-container img {
+                max-width: 100%;
+                height: auto;
+                border-radius: 8px;
+            }
+            
+            .performance-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+                margin: 20px 0;
+            }
+            
+            .performance-card {
+                background: white;
+                border: 2px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 20px;
+                transition: all 0.3s ease;
+            }
+            
+            .performance-card:hover {
+                border-color: #3b82f6;
+                box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+            }
+            
+            .card-title {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1e40af;
+                margin-bottom: 12px;
+            }
+            
+            .skill-bar {
+                background: #e2e8f0;
+                border-radius: 10px;
+                height: 12px;
+                margin: 8px 0;
+                overflow: hidden;
+            }
+            
+            .skill-fill {
+                height: 100%;
+                border-radius: 10px;
+                transition: width 1s ease;
+                background: linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%);
+            }
+            
+            .skill-label {
+                display: flex;
+                justify-content: space-between;
+                font-size: 11px;
+                color: #64748b;
+                margin-bottom: 4px;
+            }
+            
+            .criteria-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+                margin: 15px 0;
+            }
+            
+            .criteria-item {
+                background: #f8fafc;
+                padding: 10px;
+                border-radius: 6px;
+                text-align: center;
+                border: 1px solid #e2e8f0;
+            }
+            
+            .criteria-score {
+                font-size: 18px;
+                font-weight: bold;
+                color: #059669;
+            }
+            
+            .criteria-label {
+                font-size: 10px;
+                color: #64748b;
+                margin-top: 2px;
+            }
+            
+            .question-detailed {
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 20px;
+                margin: 15px 0;
+                position: relative;
+            }
+            
+            .question-number {
+                position: absolute;
+                top: -10px;
+                left: 20px;
+                background: #3b82f6;
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            
+            .question-status {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }
+            
+            .status-correct {
+                background: #dcfce7;
+                color: #166534;
+            }
+            
+            .status-incorrect {
+                background: #fee2e2;
+                color: #991b1b;
+            }
+            
+            .status-partial {
+                background: #fef3c7;
+                color: #92400e;
+            }
+            
+            .recommendation-box {
+                background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+                border-left: 4px solid #0ea5e9;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 15px 0;
+            }
+            
+            .priority-high { border-left-color: #dc2626; }
+            .priority-medium { border-left-color: #d97706; }
+            .priority-low { border-left-color: #059669; }
+            
+            .strength-weakness-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+            
+            .strength-box {
+                background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%);
+                border-left: 4px solid #22c55e;
+                padding: 15px;
+                border-radius: 8px;
+            }
+            
+            .weakness-box {
+                background: linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%);
+                border-left: 4px solid #ef4444;
+                padding: 15px;
+                border-radius: 8px;
+            }
+            
+            .list-styled {
+                padding-left: 0;
+                list-style: none;
+            }
+            
+            .list-styled li {
+                position: relative;
+                padding-left: 25px;
+                margin-bottom: 8px;
+            }
+            
+            .list-styled li::before {
+                content: '✓';
+                position: absolute;
+                left: 0;
+                color: #22c55e;
+                font-weight: bold;
+            }
+            
+            .footer {
+                margin-top: 50px;
+                text-align: center;
+                padding: 20px;
+                background: #f8fafc;
+                border-radius: 8px;
+                font-size: 11px;
+                color: #64748b;
+            }
+            
+            .page-break {
+                page-break-before: always;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🎯 SENSAI DETAILED REPORT</h1>
+            <div class="subtitle">Advanced Performance Analysis & Learning Insights</div>
+        </div>
+        
+        <div class="exam-overview">
+            <h2>{{ exam_title }}</h2>
+            <div class="overview-grid">
+                <div class="overview-item">
+                    <span class="overview-value">{{ student_name }}</span>
+                    <div class="overview-label">Student Name</div>
+                </div>
+                <div class="overview-item">
+                    <span class="overview-value">{{ total_questions }}</span>
+                    <div class="overview-label">Total Questions</div>
+                </div>
+                <div class="overview-item">
+                    <span class="overview-value">{{ exam_date }}</span>
+                    <div class="overview-label">Date Completed</div>
+                </div>
+                <div class="overview-item">
+                    <span class="overview-value">{{ duration }}</span>
+                    <div class="overview-label">Time Taken</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grade-banner">
+            <div class="grade-label">Overall Performance</div>
+            <div class="grade-large">{{ evaluation_data.overall_performance.grade_level }}</div>
+            <div class="grade-label">{{ evaluation_data.overall_performance.performance_category }} • {{ score }}%</div>
+        </div>
+        
+        <!-- Performance Charts Section -->
+        {% if charts %}
+        <div class="section">
+            <h3 class="section-title"><span class="emoji">📊</span>Performance Visualization</h3>
+            
+            {% if charts.cognitive_skills %}
+            <div class="chart-container">
+                <h4>Cognitive Skills Assessment</h4>
+                <img src="data:image/png;base64,{{ charts.cognitive_skills }}" alt="Cognitive Skills Chart">
+            </div>
+            {% endif %}
+            
+            {% if charts.question_analysis %}
+            <div class="chart-container">
+                <h4>Question-by-Question Analysis</h4>
+                <img src="data:image/png;base64,{{ charts.question_analysis }}" alt="Question Analysis Chart">
+            </div>
+            {% endif %}
+            
+            <div class="performance-grid">
+                {% if charts.knowledge_areas %}
+                <div class="chart-container">
+                    <h4>Knowledge Areas</h4>
+                    <img src="data:image/png;base64,{{ charts.knowledge_areas }}" alt="Knowledge Areas Chart">
+                </div>
+                {% endif %}
+                
+                {% if charts.completion_gauge %}
+                <div class="chart-container">
+                    <h4>Completion Metrics</h4>
+                    <img src="data:image/png;base64,{{ charts.completion_gauge }}" alt="Completion Gauge">
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Detailed Performance Analysis -->
+        <div class="section">
+            <h3 class="section-title"><span class="emoji">🎯</span>Detailed Performance Analysis</h3>
+            
+            <div class="strength-weakness-grid">
+                <div class="strength-box">
+                    <h4>💪 Key Strengths</h4>
+                    <ul class="list-styled">
+                        {% for strength in evaluation_data.overall_performance.strengths %}
+                        <li>{{ strength }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <div class="weakness-box">
+                    <h4>🎯 Areas for Improvement</h4>
+                    <ul class="list-styled">
+                        {% for weakness in evaluation_data.overall_performance.weaknesses %}
+                        <li>{{ weakness }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="card-title">Skill Assessment</div>
+                    {% for area in evaluation_data.skill_assessment.knowledge_areas %}
+                    <div class="skill-label">
+                        <span>{{ area.area }}</span>
+                        <span>{{ area.score }}% ({{ area.level }})</span>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ area.score }}%"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="performance-card">
+                    <div class="card-title">Cognitive Skills</div>
+                    {% for skill, score in evaluation_data.skill_assessment.cognitive_skills.items() %}
+                    <div class="skill-label">
+                        <span>{{ skill.replace('_', ' ').title() }}</span>
+                        <span>{{ score }}%</span>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ score }}%"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Question-by-Question Analysis -->
+        {% if evaluation_data.question_analysis %}
+        <div class="section page-break">
+            <h3 class="section-title"><span class="emoji">📝</span>Question-by-Question Analysis</h3>
+            
+            {% for qa in evaluation_data.question_analysis %}
+            <div class="question-detailed">
+                <div class="question-number">{{ qa.question_number }}</div>
+                
+                <div style="margin-left: 40px;">
+                    <div style="margin-bottom: 10px;">
+                        <span class="question-status status-{{ qa.status }}">{{ qa.status.upper() }}</span>
+                        <span style="margin-left: 15px; font-weight: 600;">Question {{ qa.question_number }}</span>
+                    </div>
+                    
+                    <div class="criteria-grid">
+                        {% for criteria, score in qa.criteria_scores.items() %}
+                        <div class="criteria-item">
+                            <div class="criteria-score">{{ score }}%</div>
+                            <div class="criteria-label">{{ criteria.title() }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div style="margin: 15px 0;">
+                        <strong>Feedback:</strong> {{ qa.feedback }}
+                    </div>
+                    
+                    {% if qa.improvement_tips %}
+                    <div>
+                        <strong>Improvement Tips:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            {% for tip in qa.improvement_tips %}
+                            <li>{{ tip }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <!-- Learning Recommendations -->
+        <div class="section">
+            <h3 class="section-title"><span class="emoji">💡</span>Personalized Learning Recommendations</h3>
+            
+            <div style="margin-bottom: 20px;">
+                <h4>⚡ Immediate Actions</h4>
+                {% for action in evaluation_data.learning_recommendations.immediate_actions %}
+                <div class="recommendation-box priority-{{ action.priority.lower() }}">
+                    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+                        <strong>{{ action.action }}</strong>
+                        <span style="background: rgba(0,0,0,0.1); padding: 2px 8px; border-radius: 12px; font-size: 10px;">
+                            {{ action.priority }} Priority • {{ action.timeline }}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="card-title">🎯 Focus Areas</div>
+                    <ul class="list-styled">
+                        {% for area in evaluation_data.learning_recommendations.study_plan.focus_areas %}
+                        <li>{{ area }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                
+                <div class="performance-card">
+                    <div class="card-title">📚 Recommended Resources</div>
+                    <ul class="list-styled">
+                        {% for resource in evaluation_data.learning_recommendations.study_plan.recommended_resources %}
+                        <li>{{ resource }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="recommendation-box">
+                <h4>🚀 Next Steps</h4>
+                <ol style="margin: 0; padding-left: 20px;">
+                    {% for step in evaluation_data.learning_recommendations.next_steps %}
+                    <li style="margin-bottom: 5px;">{{ step }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+        
+        {% if analytics_data %}
+        <div class="section">
+            <h3 class="section-title"><span class="emoji">📈</span>Session Analytics (Teacher View)</h3>
+            
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="card-title">Event Summary</div>
+                    <div class="criteria-grid">
+                        <div class="criteria-item">
+                            <div class="criteria-score">{{ analytics_data.total_events }}</div>
+                            <div class="criteria-label">Total Events</div>
+                        </div>
+                        <div class="criteria-item">
+                            <div class="criteria-score">{{ analytics_data.flagged_events }}</div>
+                            <div class="criteria-label">Flagged</div>
+                        </div>
+                        <div class="criteria-item">
+                            <div class="criteria-score">{{ analytics_data.high_priority_events }}</div>
+                            <div class="criteria-label">High Priority</div>
+                        </div>
+                        <div class="criteria-item">
+                            <div class="criteria-score">{{ (analytics_data.suspicious_activity_score * 100)|round }}%</div>
+                            <div class="criteria-label">Risk Score</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="performance-card">
+                    <div class="card-title">Behavioral Assessment</div>
+                    <div class="skill-label">
+                        <span>Confidence Level</span>
+                        <span>{{ (analytics_data.average_confidence_score * 100)|round }}%</span>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-fill" style="width: {{ (analytics_data.average_confidence_score * 100)|round }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="footer">
+            <strong>Generated by SENSAI AI Platform</strong><br>
+            {{ generation_date }}<br>
+            This comprehensive report provides AI-powered analysis for educational assessment and improvement.
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Determine grade color gradient
+    overall_perf = evaluation_data.get('overall_performance', {})
+    grade_level = overall_perf.get('grade_level', 'C')
+    
+    if grade_level == 'A' or score >= 90:
+        grade_gradient = "linear-gradient(135deg, #059669 0%, #10b981 100%)"
+    elif grade_level == 'B' or score >= 80:
+        grade_gradient = "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)"
+    elif grade_level == 'C' or score >= 70:
+        grade_gradient = "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)" 
+    elif grade_level == 'D' or score >= 60:
+        grade_gradient = "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)"
+    else:
+        grade_gradient = "linear-gradient(135deg, #7c2d12 0%, #dc2626 100%)"
+    
+    # Prepare template variables
+    template_vars = {
+        "exam_title": exam_title,
+        "student_name": student_name,
+        "score": score,
+        "grade_gradient": grade_gradient,
+        "exam_date": start_time.strftime("%B %d, %Y"),
+        "duration": f"{time_taken/60:.1f} minutes",
+        "total_questions": len(questions),
+        "questions": questions,
+        "answers": answers,
+        "analytics_data": analytics_data,
+        "evaluation_data": evaluation_data,
+        "charts": charts,
+        "request": request,
+        "generation_date": datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    }
+    
+    # Render HTML
+    template = Template(html_template)
+    html_content = template.render(**template_vars)
+    
+    # Generate PDF
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+        weasyprint.HTML(string=html_content).write_pdf(tmp_file.name)
+        return tmp_file.name

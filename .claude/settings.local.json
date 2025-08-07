@@ -22,7 +22,11 @@
       "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src venv/bin/python /mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/migrate_exam_roles.py)",
       "Bash(npm run dev:*)",
       "Bash(ss:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src venv/bin/python -c \"import weasyprint; print(''WeasyPrint imported successfully'')\")",
+      "Bash(pkill:*)",
+      "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src venv/bin/python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload)"
     ],
     "deny": []
   }
