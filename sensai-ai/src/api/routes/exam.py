@@ -276,14 +276,25 @@ async def get_exam_sessions(exam_id: str):
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
+            # Debug: Check what users exist in the database
+            await cursor.execute(f"SELECT id, email, first_name, last_name FROM {users_table_name} LIMIT 10")
+            users_debug = await cursor.fetchall()
+            print(f"Users in database: {users_debug}")
+            
+            # Debug: Check what user_ids are in sessions
+            await cursor.execute(f"SELECT DISTINCT user_id FROM {exam_sessions_table_name} WHERE exam_id = ?", (exam_id,))
+            session_user_ids = await cursor.fetchall()
+            print(f"User IDs in sessions: {session_user_ids}")
+            
             # Join with users table to get user information and count events
+            # Try multiple approaches: integer ID, string ID, or email match
             await cursor.execute(
                 f"""SELECT 
                     s.id, 
                     s.user_id, 
-                    u.email,
-                    u.first_name,
-                    u.last_name,
+                    COALESCE(u1.email, u2.email, u3.email) as user_email,
+                    COALESCE(u1.first_name, u2.first_name, u3.first_name) as user_first_name,
+                    COALESCE(u1.last_name, u2.last_name, u3.last_name) as user_last_name,
                     s.start_time, 
                     s.end_time, 
                     s.status, 
@@ -291,31 +302,42 @@ async def get_exam_sessions(exam_id: str):
                     s.created_at,
                     COUNT(e.id) as event_count
                     FROM {exam_sessions_table_name} s
-                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    LEFT JOIN {users_table_name} u1 ON CAST(s.user_id AS INTEGER) = u1.id
+                    LEFT JOIN {users_table_name} u2 ON s.user_id = CAST(u2.id AS TEXT)
+                    LEFT JOIN {users_table_name} u3 ON s.user_id = u3.email
                     LEFT JOIN {exam_events_table_name} e ON s.id = e.session_id
                     WHERE s.exam_id = ?
-                    GROUP BY s.id, s.user_id, u.email, u.first_name, u.last_name, s.start_time, s.end_time, s.status, s.score, s.created_at
+                    GROUP BY s.id, s.user_id, user_email, user_first_name, user_last_name, s.start_time, s.end_time, s.status, s.score, s.created_at
                     ORDER BY s.created_at DESC""",
                 (exam_id,)
             )
             
             sessions = []
             async for row in cursor:
+                print(f"Session row data: {row}")  # Debug logging
+                
                 # Create user display name: prefer "FirstName LastName", fallback to email
                 user_display = "Unknown User"
-                if row[2]:  # email exists
-                    if row[3] and row[4]:  # first_name and last_name exist
-                        user_display = f"{row[3]} {row[4]}"
-                    elif row[3]:  # only first_name exists
-                        user_display = row[3]
+                user_email = row[2]      # user_email
+                user_first_name = row[3] # user_first_name  
+                user_last_name = row[4]  # user_last_name
+                
+                if user_email:  # email exists
+                    if user_first_name and user_last_name:  # first_name and last_name exist
+                        user_display = f"{user_first_name} {user_last_name}"
+                    elif user_first_name:  # only first_name exists
+                        user_display = user_first_name
                     else:
-                        user_display = row[2]  # fallback to email
+                        user_display = user_email  # fallback to email
+                else:
+                    # Fallback: use user_id as display if no user info found
+                    user_display = f"User {row[1]}" if row[1] else "Unknown User"
                 
                 sessions.append({
                     "id": row[0],
                     "user_id": row[1], 
                     "user_display": user_display,
-                    "user_email": row[2],
+                    "user_email": user_email,
                     "start_time": row[5],
                     "end_time": row[6],
                     "status": row[7],
@@ -719,15 +741,28 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                 timestamp = row[2]
                 
                 # Use EventScorer for enhanced priority and confidence calculation
-                event_scorer = EventScorer()
-                priority, confidence_score, is_flagged, description = event_scorer.calculate_event_score(event_type, event_data)
+                try:
+                    priority, confidence_score, is_flagged, description = EventScorer.calculate_event_score(event_type, event_data)
+                except Exception as scorer_error:
+                    print(f"Warning: EventScorer error: {scorer_error}")
+                    # Provide fallback values
+                    priority = 1
+                    confidence_score = 0.5
+                    is_flagged = False
+                    description = f"Event: {event_type}"
+                
+                # Ensure numeric values are not None
+                priority = priority if priority is not None else 1
+                confidence_score = confidence_score if confidence_score is not None else 0.5
+                is_flagged = is_flagged if is_flagged is not None else False
                 
                 if is_flagged:
                     flagged_events += 1
                     if priority == 3:
                         high_priority_events += 1
                 
-                confidence_scores.append(confidence_score)
+                if confidence_score is not None:
+                    confidence_scores.append(confidence_score)
                 
                 # Create timeline event
                 timeline_event = ExamTimelineEvent(
@@ -813,30 +848,39 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
             
             # Calculate analytics with pattern analysis
             avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
-            suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2)  # Scale suspicious activity
+            
+            # Ensure all values are properly initialized and not None
+            total_events = total_events if total_events is not None else 0
+            flagged_events = flagged_events if flagged_events is not None else 0
+            high_priority_events = high_priority_events if high_priority_events is not None else 0
+            
+            suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2) if total_events > 0 else 0.0  # Scale suspicious activity
             
             # Use EventScorer for pattern analysis
-            event_scorer = EventScorer()
-            all_events = [
-                {
-                    'event_type': event.event_type,
-                    'event_data': event.event_data,
-                    'timestamp': event.timestamp,
-                    'confidence_score': event.confidence_score
-                }
-                for event in events
-            ]
-            
-            # Get suspicious patterns
-            suspicious_patterns = event_scorer.analyze_event_patterns(all_events)
-            pattern_descriptions = []
-            for pattern in suspicious_patterns.get('patterns', []):
-                pattern_descriptions.append({
-                    'pattern': pattern.get('type', 'unknown'),
-                    'severity': pattern.get('severity', 'unknown'),
-                    'description': pattern.get('description', ''),
-                    'details': pattern
-                })
+            try:
+                all_events = [
+                    {
+                        'event_type': event.event_type,
+                        'event_data': event.event_data,
+                        'timestamp': event.timestamp,
+                        'confidence_score': event.confidence_score
+                    }
+                    for event in events
+                ]
+                
+                # Get suspicious patterns
+                suspicious_patterns = EventScorer.analyze_event_patterns(all_events) if hasattr(EventScorer, 'analyze_event_patterns') else {'patterns': []}
+                pattern_descriptions = []
+                for pattern in suspicious_patterns.get('patterns', []):
+                    pattern_descriptions.append({
+                        'pattern': pattern.get('type', 'unknown'),
+                        'severity': pattern.get('severity', 'unknown'),
+                        'description': pattern.get('description', ''),
+                        'details': pattern
+                    })
+            except Exception as pattern_error:
+                print(f"Warning: Pattern analysis error: {pattern_error}")
+                pattern_descriptions = []
             
             analytics = ExamAnalytics(
                 session_id=session_id,
@@ -856,6 +900,9 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
         raise
     except Exception as e:
         print(f"Error fetching exam analytics: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 

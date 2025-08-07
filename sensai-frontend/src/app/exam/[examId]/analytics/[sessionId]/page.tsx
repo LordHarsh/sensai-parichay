@@ -172,9 +172,20 @@ export default function ExamAnalyticsPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-6xl mx-auto py-8 px-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Exam Analytics</h1>
-          <p className="text-gray-400">Session ID: {analytics.session_id}</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Exam Analytics</h1>
+            <p className="text-gray-400">Session ID: {analytics.session_id}</p>
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={() => window.location.href = `/exam/${examId}/results/${sessionId}`}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+            >
+              <Eye size={20} />
+              <span>View Results & Video</span>
+            </button>
+          </div>
         </div>
 
         {/* Analytics Summary */}
