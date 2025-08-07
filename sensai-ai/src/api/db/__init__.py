@@ -27,6 +27,9 @@ from api.config import (
     task_generation_jobs_table_name,
     org_api_keys_table_name,
     code_drafts_table_name,
+    exams_table_name,
+    exam_sessions_table_name,
+    exam_events_table_name,
 )
 
 
@@ -462,6 +465,94 @@ async def create_code_drafts_table(cursor):
     )
 
 
+async def create_exams_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {exams_table_name} (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT,
+                duration INTEGER NOT NULL,
+                questions TEXT NOT NULL,
+                settings TEXT,
+                monitoring TEXT,
+                video_file_path TEXT,
+                org_id INTEGER,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_org_id ON {exams_table_name} (org_id)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_created_by ON {exams_table_name} (created_by)"""
+    )
+
+
+async def create_exam_sessions_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {exam_sessions_table_name} (
+                id TEXT PRIMARY KEY,
+                exam_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                start_time DATETIME,
+                end_time DATETIME,
+                status TEXT DEFAULT 'pending',
+                answers TEXT,
+                score REAL,
+                metadata TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (exam_id) REFERENCES {exams_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_session_exam_id ON {exam_sessions_table_name} (exam_id)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_session_user_id ON {exam_sessions_table_name} (user_id)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_session_status ON {exam_sessions_table_name} (status)"""
+    )
+
+
+async def create_exam_events_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {exam_events_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_data TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES {exam_sessions_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_event_session_id ON {exam_events_table_name} (session_id)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_event_type ON {exam_events_table_name} (event_type)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_event_timestamp ON {exam_events_table_name} (timestamp)"""
+    )
+
+
+
 async def init_db():
     print("Initializing database...")
     # Ensure the database folder exists
@@ -479,15 +570,15 @@ async def init_db():
         print("Creating tables...")
         cursor = await conn.cursor()
 
-        if exists(sqlite_db_path):
-            print("Database file exists, checking for existing tables...")
-            if not await check_table_exists(code_drafts_table_name, cursor):
-                print("Code drafts table does not exist, creating it...")
-                await create_code_drafts_table(cursor)
-                print("Created code drafts table")
+        # if exists(sqlite_db_path):
+        #     print("Database file exists, checking for existing tables...")
+        #     if not await check_table_exists(code_drafts_table_name, cursor):
+        #         print("Code drafts table does not exist, creating it...")
+        #         await create_code_drafts_table(cursor)
+        #         print("Created code drafts table")
 
-            await conn.commit()
-            return
+        #     await conn.commit()
+        #     return
 
         try:
             print("Creating tables...")
@@ -536,6 +627,13 @@ async def init_db():
             await create_task_generation_jobs_table(cursor)
 
             await create_code_drafts_table(cursor)
+
+            await create_exams_table(cursor)
+
+            await create_exam_sessions_table(cursor)
+
+            await create_exam_events_table(cursor)
+            
 
             await conn.commit()
 
