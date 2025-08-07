@@ -482,6 +482,34 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
                         "type": "info",
                         "timestamp": event["timestamp"]
                     })
+            
+            elif event["type"] == "face_count_violation":
+                face_count = event["data"].get("face_count", 0)
+                expected_faces = event["data"].get("expected_faces", 1)
+                violation_duration = event["data"].get("violation_duration", 0) / 1000  # Convert to seconds
+                print(f"👥 Face Count Violation: User {session_id} has {face_count} faces (expected {expected_faces}) for {violation_duration:.1f}s")
+                
+                if face_count == 0:
+                    await exam_manager.send_notification(session_id, {
+                        "id": str(uuid.uuid4()),
+                        "message": "Please ensure your face is visible to the camera at all times.",
+                        "type": "warning",
+                        "timestamp": event["timestamp"]
+                    })
+                elif face_count > expected_faces:
+                    await exam_manager.send_notification(session_id, {
+                        "id": str(uuid.uuid4()),
+                        "message": f"Multiple people detected in camera. Only the exam taker should be visible.",
+                        "type": "warning",
+                        "timestamp": event["timestamp"]
+                    })
+            
+            elif event["type"] == "face_detection_update":
+                # Face detection updates don't generate notifications, just stored for analytics
+                face_count = event["data"].get("face_count", 0)
+                if face_count != 1:  # Log non-standard face counts
+                    print(f"📊 Face Detection: User {session_id} - {face_count} faces detected")
+                pass
     
     elif message_type == "video_chunk":
         timestamp = message.get("timestamp")

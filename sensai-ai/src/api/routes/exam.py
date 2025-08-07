@@ -113,9 +113,8 @@ async def get_exam(exam_id: str, user_id: int = Header(None, alias="x-user-id"))
                 else:
                     exam_data["user_role"] = "student"
                     exam_data["is_creator"] = False
-                    # Remove sensitive settings for students
+                    # Remove sensitive settings for students (but keep monitoring settings which are needed for frontend)
                     exam_data.pop("settings", None)
-                    exam_data.pop("monitoring", None)
                     # Remove correct answers from questions for students
                     questions = exam_data["questions"]
                     for question in questions:
