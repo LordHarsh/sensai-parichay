@@ -429,6 +429,49 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
                     "timestamp": event["timestamp"]
                 })
             
+            # Advanced cheating detection events
+            elif event["type"] == "rapid_paste_burst":
+                paste_count = event["data"].get("paste_count", 0)
+                time_window = event["data"].get("time_window", 0) / 1000  # Convert to seconds
+                await exam_manager.send_notification(session_id, {
+                    "id": str(uuid.uuid4()),
+                    "message": f"Multiple paste operations detected: {paste_count} pastes in {time_window:.1f} seconds",
+                    "type": "warning",
+                    "timestamp": event["timestamp"]
+                })
+            
+            elif event["type"] == "writing_style_drift":
+                similarity_score = event["data"].get("similarity_score", 0)
+                await exam_manager.send_notification(session_id, {
+                    "id": str(uuid.uuid4()),
+                    "message": f"Writing style inconsistency detected (similarity: {similarity_score:.2f})",
+                    "type": "warning",
+                    "timestamp": event["timestamp"]
+                })
+            
+            elif event["type"] == "content_similarity":
+                similarity_score = event["data"].get("similarity_score", 0)
+                phrases_count = len(event["data"].get("matching_phrases", []))
+                await exam_manager.send_notification(session_id, {
+                    "id": str(uuid.uuid4()),
+                    "message": f"Content similarity detected: {phrases_count} common phrases (score: {similarity_score:.2f})",
+                    "type": "warning",
+                    "timestamp": event["timestamp"]
+                })
+            
+            elif event["type"] == "typing_pattern_anomaly":
+                anomaly_type = event["data"].get("anomaly_type", "unknown")
+                confidence = event["data"].get("confidence", 0)
+                await exam_manager.send_notification(session_id, {
+                    "id": str(uuid.uuid4()),
+                    "message": f"Typing pattern anomaly: {anomaly_type} (confidence: {confidence:.2f})",
+                    "type": "info",
+                    "timestamp": event["timestamp"]
+                })
+            
+            elif event["type"] == "wpm_tracking":
+                # WPM events don't generate notifications, just stored for analytics
+                pass
             elif event["type"] == "gaze_tracking" and event["data"].get("looking_away"):
                 print(f"🔍 Gaze Event: User {session_id} looking away at ({event['data']['gaze_x']}, {event['data']['gaze_y']}) with confidence {event['data']['confidence']:.2f}")
                 # Optionally send notification for looking away

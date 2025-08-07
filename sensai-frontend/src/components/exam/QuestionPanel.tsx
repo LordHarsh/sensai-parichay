@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { ExamQuestion } from "@/types/exam";
+import { ExamWebSocket } from "@/lib/exam-websocket";
+import AdvancedCheatingDetector from "./AdvancedCheatingDetector";
 import { 
   CheckCircle2, 
   Edit3, 
@@ -19,6 +21,8 @@ interface QuestionPanelProps {
   onQuestionChange: (index: number) => void;
   onSubmitExam?: () => void;
   isSubmitting?: boolean;
+  websocket?: ExamWebSocket | null;
+  examId?: string;
 }
 
 export default function QuestionPanel({
@@ -28,7 +32,9 @@ export default function QuestionPanel({
   onAnswerChange,
   onQuestionChange,
   onSubmitExam,
-  isSubmitting = false
+  isSubmitting = false,
+  websocket,
+  examId
 }: QuestionPanelProps) {
   const currentQuestion = questions[currentIndex];
 
@@ -60,11 +66,11 @@ export default function QuestionPanel({
                     className="sr-only"
                   />
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    answers[currentQuestion.id] === option 
+                    answers[currentQuestion.id] === option.id
                       ? 'border-blue-500 bg-blue-500' 
                       : 'border-gray-500 group-hover:border-blue-400'
                   }`}>
-                    {answers[currentQuestion.id] === option && (
+                    {answers[currentQuestion.id] === option.id && (
                       <div className="w-2 h-2 rounded-full bg-white"></div>
                     )}
                   </div>
@@ -77,13 +83,26 @@ export default function QuestionPanel({
 
       case 'text':
         return (
-          <textarea
-            value={answers[currentQuestion.id] || ''}
-            onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
-            placeholder="Enter your answer here..."
-            rows={6}
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none shadow-sm"
-          />
+          <div>
+            <textarea
+              value={answers[currentQuestion.id] || ''}
+              onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
+              placeholder="Enter your answer here..."
+              rows={6}
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none shadow-sm"
+            />
+            {websocket && examId && (
+              <AdvancedCheatingDetector
+                websocket={websocket}
+                examId={examId}
+                questionId={currentQuestion.id}
+                onTypingMetricsUpdate={(metrics) => {
+                  // Handle typing metrics updates if needed
+                  console.log('Typing metrics:', metrics);
+                }}
+              />
+            )}
+          </div>
         );
 
       case 'code':
@@ -99,6 +118,16 @@ export default function QuestionPanel({
             <div className="text-xs text-gray-400">
               Language: {currentQuestion.metadata?.language || 'Plain text'}
             </div>
+            {websocket && examId && (
+              <AdvancedCheatingDetector
+                websocket={websocket}
+                examId={examId}
+                questionId={currentQuestion.id}
+                onTypingMetricsUpdate={(metrics) => {
+                  console.log('Code typing metrics:', metrics);
+                }}
+              />
+            )}
           </div>
         );
 
@@ -115,6 +144,16 @@ export default function QuestionPanel({
             <div className="text-xs text-gray-400">
               Word count: {(answers[currentQuestion.id] || '').split(/\s+/).filter(word => word.length > 0).length}
             </div>
+            {websocket && examId && (
+              <AdvancedCheatingDetector
+                websocket={websocket}
+                examId={examId}
+                questionId={currentQuestion.id}
+                onTypingMetricsUpdate={(metrics) => {
+                  console.log('Essay typing metrics:', metrics);
+                }}
+              />
+            )}
           </div>
         );
 

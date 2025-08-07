@@ -9,6 +9,7 @@ from api.db import (
 from typing import List, Optional
 import json
 import uuid
+import os
 from datetime import datetime
 from api.models import (
     CreateExamRequest,
@@ -360,8 +361,15 @@ async def get_exam_results(exam_id: str, session_id: str):
             async for row in cursor:
                 events_summary[row[0]] = row[1]
             
-            # Get video file info - for now just set basic info
-            video_info = {"has_recording": True, "chunk_count": 0, "total_size": 0}
+            # Get video file info
+            from api.config import data_root_dir
+            video_dir = os.path.join(data_root_dir, "exam_videos", exam_id)
+            video_path = os.path.join(video_dir, f"{exam_id}_master_recording.webm")
+            video_info = {
+                "has_recording": os.path.exists(video_path),
+                "chunk_count": 1 if os.path.exists(video_path) else 0,
+                "total_size": os.path.getsize(video_path) if os.path.exists(video_path) else 0
+            }
             
             return {
                 "session_id": session_row[0],
@@ -447,6 +455,40 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                     is_flagged = True
                     flagged_events += 1
                     high_priority_events += 1
+                elif event_type == 'rapid_paste_burst':
+                    priority = 3
+                    confidence_score = 0.95
+                    is_flagged = True
+                    flagged_events += 1
+                    high_priority_events += 1
+                elif event_type == 'content_similarity':
+                    similarity_score = event_data.get('similarity_score', 0)
+                    priority = 3 if similarity_score > 0.7 else 2
+                    confidence_score = similarity_score
+                    is_flagged = similarity_score > 0.5
+                    if is_flagged:
+                        flagged_events += 1
+                        if priority == 3:
+                            high_priority_events += 1
+                elif event_type == 'writing_style_drift':
+                    style_similarity = event_data.get('similarity_score', 0)
+                    priority = 2 if style_similarity < 0.3 else 1
+                    confidence_score = 1.0 - style_similarity  # Lower similarity = higher suspicion
+                    is_flagged = style_similarity < 0.4
+                    if is_flagged:
+                        flagged_events += 1
+                elif event_type == 'typing_pattern_anomaly':
+                    anomaly_confidence = event_data.get('confidence', 0)
+                    priority = 2
+                    confidence_score = anomaly_confidence
+                    is_flagged = anomaly_confidence > 0.7
+                    if is_flagged:
+                        flagged_events += 1
+                elif event_type == 'wpm_tracking':
+                    # WPM events are informational, not flagged
+                    priority = 1
+                    confidence_score = 0.5
+                    is_flagged = False
                 elif event_type == 'keystroke_anomaly':
                     priority = 2
                     confidence_score = 0.7
@@ -651,3 +693,83 @@ async def calculate_exam_score(exam_id: str, answers: dict, cursor) -> float:
     except Exception as e:
         print(f"Error calculating score: {e}")
         return 0.0
+
+
+@router.get("/{exam_id}/video/{session_id}")
+async def get_exam_video(exam_id: str, session_id: str, download: bool = False, user_id: int = Header(..., alias="x-user-id")):
+    """Serve exam video recording"""
+    try:
+        from fastapi.responses import FileResponse, StreamingResponse
+        import os
+        from api.config import data_root_dir
+        
+        print(f"Video request: exam_id={exam_id}, session_id={session_id}, user_id={user_id}")
+        
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Check if user has permission to view this video
+            await cursor.execute(
+                f"""SELECT es.user_id, e.created_by 
+                    FROM {exam_sessions_table_name} es 
+                    JOIN {exams_table_name} e ON es.exam_id = e.id 
+                    WHERE es.id = ? AND es.exam_id = ?""",
+                (session_id, exam_id)
+            )
+            session_info = await cursor.fetchone()
+            
+            if not session_info:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            session_user_id, exam_creator_id = session_info
+            
+            # Only the exam taker or exam creator can view the video
+            if user_id != session_user_id and user_id != exam_creator_id:
+                raise HTTPException(status_code=403, detail="Not authorized to view this video")
+            
+            # Get video file path
+            from api.config import data_root_dir
+            video_dir = os.path.join(data_root_dir, "exam_videos", exam_id)
+            video_path = os.path.join(video_dir, f"{exam_id}_master_recording.webm")
+            
+            print(f"Looking for video at: {video_path}")
+            print(f"Video exists: {os.path.exists(video_path)}")
+            
+            if not os.path.exists(video_path):
+                raise HTTPException(status_code=404, detail="Video recording not found")
+            
+            if download:
+                return FileResponse(
+                    video_path,
+                    media_type='video/webm',
+                    filename=f"exam_{exam_id}_session_{session_id}.webm"
+                )
+            else:
+                def iterfile(file_path: str):
+                    with open(file_path, mode="rb") as file_like:
+                        while True:
+                            chunk = file_like.read(8192)  # Read in 8KB chunks
+                            if not chunk:
+                                break
+                            yield chunk
+                
+                file_size = os.path.getsize(video_path)
+                
+                return StreamingResponse(
+                    iterfile(video_path),
+                    media_type='video/webm',
+                    headers={
+                        'Accept-Ranges': 'bytes',
+                        'Content-Length': str(file_size),
+                        'Content-Type': 'video/webm',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                )
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error serving video: {e}")
+        raise HTTPException(status_code=500, detail="Failed to serve video")

@@ -47,6 +47,69 @@ export interface ClipboardPasteEvent extends ExamEvent {
   };
 }
 
+export interface RapidPasteBurstEvent extends ExamEvent {
+  type: "rapid_paste_burst";
+  data: {
+    paste_count: number;
+    total_chars: number;
+    time_window: number;
+    paste_events: Array<{
+      timestamp: number;
+      length: number;
+      content_hash: string;
+    }>;
+  };
+}
+
+export interface WritingStyleDriftEvent extends ExamEvent {
+  type: "writing_style_drift";
+  data: {
+    question_id: string;
+    drift_score: number;
+    avg_word_length_change: number;
+    sentence_structure_change: number;
+    vocabulary_similarity: number;
+    previous_samples: string[];
+    current_sample: string;
+  };
+}
+
+export interface ContentSimilarityEvent extends ExamEvent {
+  type: "content_similarity";
+  data: {
+    question_id: string;
+    similarity_score: number;
+    suspected_source: string;
+    matched_phrases: string[];
+    comparison_text: string;
+  };
+}
+
+export interface TypingPatternEvent extends ExamEvent {
+  type: "typing_pattern_anomaly";
+  data: {
+    question_id: string;
+    current_wpm: number;
+    baseline_wpm: number;
+    deviation_percentage: number;
+    keystroke_intervals: number[];
+    typing_rhythm_score: number;
+  };
+}
+
+export interface WPMTrackingEvent extends ExamEvent {
+  type: "wpm_tracking";
+  data: {
+    question_id: string;
+    wpm: number;
+    chars_typed: number;
+    time_duration: number;
+    keystroke_intervals: number[];
+    pauses: number[];
+    backspaces: number;
+  };
+}
+
 export interface MouseMovementEvent extends ExamEvent {
   type: "mouse_movement";
   data: {

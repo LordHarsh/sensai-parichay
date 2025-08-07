@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { examId: string } }
 ) {
   try {
-    const { examId } = params;
+    const { examId } = await params;
     const userId = request.headers.get("x-user-id");
 
     if (!userId) {
