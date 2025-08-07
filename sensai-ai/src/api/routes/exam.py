@@ -23,6 +23,7 @@ from api.models import (
     ExamEvaluationReport
 )
 from api.utils.db import get_new_db_connection
+from api.utils.event_scoring import EventScorer
 from api.config import (
     exams_table_name,
     exam_sessions_table_name,
@@ -717,73 +718,14 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                 event_type = row[0]
                 timestamp = row[2]
                 
-                # Calculate priority and flagging based on event type
-                priority = 1
-                confidence_score = 0.5
-                is_flagged = False
+                # Use EventScorer for enhanced priority and confidence calculation
+                event_scorer = EventScorer()
+                priority, confidence_score, is_flagged, description = event_scorer.calculate_event_score(event_type, event_data)
                 
-                # Define suspicious activities with priority and confidence
-                if event_type == 'tab_switch':
-                    priority = 3
-                    confidence_score = 0.9
-                    is_flagged = True
+                if is_flagged:
                     flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'copy_paste':
-                    priority = 3
-                    confidence_score = 0.8
-                    is_flagged = True
-                    flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'rapid_paste_burst':
-                    priority = 3
-                    confidence_score = 0.95
-                    is_flagged = True
-                    flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'content_similarity':
-                    similarity_score = event_data.get('similarity_score', 0)
-                    priority = 3 if similarity_score > 0.7 else 2
-                    confidence_score = similarity_score
-                    is_flagged = similarity_score > 0.5
-                    if is_flagged:
-                        flagged_events += 1
-                        if priority == 3:
-                            high_priority_events += 1
-                elif event_type == 'writing_style_drift':
-                    style_similarity = event_data.get('similarity_score', 0)
-                    priority = 2 if style_similarity < 0.3 else 1
-                    confidence_score = 1.0 - style_similarity  # Lower similarity = higher suspicion
-                    is_flagged = style_similarity < 0.4
-                    if is_flagged:
-                        flagged_events += 1
-                elif event_type == 'typing_pattern_anomaly':
-                    anomaly_confidence = event_data.get('confidence', 0)
-                    priority = 2
-                    confidence_score = anomaly_confidence
-                    is_flagged = anomaly_confidence > 0.7
-                    if is_flagged:
-                        flagged_events += 1
-                elif event_type == 'wpm_tracking':
-                    # WPM events are informational, not flagged
-                    priority = 1
-                    confidence_score = 0.5
-                    is_flagged = False
-                elif event_type == 'keystroke_anomaly':
-                    priority = 2
-                    confidence_score = 0.7
-                    is_flagged = True
-                    flagged_events += 1
-                elif event_type == 'window_focus_lost':
-                    priority = 2
-                    confidence_score = 0.6
-                    is_flagged = True
-                    flagged_events += 1
-                elif event_type == 'face_not_detected':
-                    priority = 2
-                    confidence_score = 0.7
-                    is_flagged = True
-                    flagged_events += 1
+                    if priority == 3:
+                        high_priority_events += 1
                 
                 confidence_scores.append(confidence_score)
                 
@@ -869,9 +811,32 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                         "details": event_data
                     })
             
-            # Calculate analytics
+            # Calculate analytics with pattern analysis
             avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
             suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2)  # Scale suspicious activity
+            
+            # Use EventScorer for pattern analysis
+            event_scorer = EventScorer()
+            all_events = [
+                {
+                    'event_type': event.event_type,
+                    'event_data': event.event_data,
+                    'timestamp': event.timestamp,
+                    'confidence_score': event.confidence_score
+                }
+                for event in events
+            ]
+            
+            # Get suspicious patterns
+            suspicious_patterns = event_scorer.analyze_event_patterns(all_events)
+            pattern_descriptions = []
+            for pattern in suspicious_patterns.get('patterns', []):
+                pattern_descriptions.append({
+                    'pattern': pattern.get('type', 'unknown'),
+                    'severity': pattern.get('severity', 'unknown'),
+                    'description': pattern.get('description', ''),
+                    'details': pattern
+                })
             
             analytics = ExamAnalytics(
                 session_id=session_id,
@@ -881,7 +846,8 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                 average_confidence_score=avg_confidence,
                 suspicious_activity_score=suspicious_score,
                 timeline_events=events,
-                step_timeline=step_timeline  # Add step-by-step timeline
+                step_timeline=step_timeline,  # Add step-by-step timeline
+                suspicious_patterns=pattern_descriptions  # Add pattern analysis
             )
             
             return analytics
