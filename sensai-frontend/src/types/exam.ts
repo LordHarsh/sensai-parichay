@@ -1,8 +1,14 @@
+export interface ExamQuestionOption {
+  id: string;
+  text: string;
+  is_correct: boolean;
+}
+
 export interface ExamQuestion {
   id: string;
   type: "multiple_choice" | "text" | "code" | "essay";
   question: string;
-  options?: string[];
+  options?: ExamQuestionOption[];
   correct_answer?: string;
   points: number;
   time_limit?: number;
@@ -183,6 +189,8 @@ export interface ExamSession {
   id: string;
   exam_id: string;
   user_id: string;
+  user_display?: string;
+  user_email?: string;
   start_time: string;
   end_time?: string;
   status: "pending" | "active" | "completed" | "terminated";
@@ -191,6 +199,7 @@ export interface ExamSession {
   video_file_path?: string;
   score?: number;
   metadata?: Record<string, any>;
+  event_count?: number;
 }
 
 export interface ExamConfiguration {

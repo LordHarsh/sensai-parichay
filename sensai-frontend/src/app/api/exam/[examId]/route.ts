@@ -8,15 +8,13 @@ export async function GET(
 ) {
   try {
     const { examId } = await params;
+    const userId = request.headers.get("x-user-id");
 
     const response = await fetch(`${API_BASE_URL}/api/exam/${examId}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        // Add auth header if available
-        ...request.headers.get("authorization") && {
-          Authorization: request.headers.get("authorization")!
-        }
+        ...userId && { "x-user-id": userId }
       }
     });
 

@@ -276,27 +276,69 @@ async def update_session_status(session_id: str, status: str):
         print(f"Error updating session status: {e}")
 
 
+async def create_or_update_session(session_id: str, exam_id: str, user_id: str, status: str):
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Check if session exists
+            await cursor.execute(
+                f"""SELECT id FROM {exam_sessions_table_name} WHERE id = ?""",
+                (session_id,)
+            )
+            
+            existing = await cursor.fetchone()
+            
+            if existing:
+                # Update existing session
+                await cursor.execute(
+                    f"""UPDATE {exam_sessions_table_name} 
+                        SET status = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?""",
+                    (status, session_id)
+                )
+            else:
+                # Create new session
+                await cursor.execute(
+                    f"""INSERT INTO {exam_sessions_table_name}
+                        (id, exam_id, user_id, start_time, status, answers, created_at, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, '{{}}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                    (session_id, exam_id, user_id, status)
+                )
+            
+            await conn.commit()
+            print(f"Session {session_id} created/updated with status: {status}")
+    except Exception as e:
+        print(f"Error creating/updating session: {e}")
+
+
 @router.websocket("/exam/{exam_id}/ws")
-async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str = Query(None)):
+async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str = Query(None), user_id: str = Query(None)):
     # Accept the connection first
     await websocket.accept()
     
-    if not token:
+    # Accept either token or user_id for now
+    if not token and not user_id:
         await websocket.send_json({
             "type": "error",
-            "message": "Authentication token required"
+            "message": "Authentication token or user_id required"
         })
-        await websocket.close(code=1008, reason="Authentication token required")
+        await websocket.close(code=1008, reason="Authentication token or user_id required")
         return
     
-    # TODO: Validate token and get user_id
-    user_id = "user_123"  # This should come from token validation
-    session_id = f"{exam_id}_{user_id}_{int(datetime.now().timestamp())}"
+    # Use user_id directly if provided, otherwise extract from token (when implemented)
+    if user_id:
+        actual_user_id = user_id
+    else:
+        # TODO: Validate token and get user_id
+        actual_user_id = "user_from_token"  # This should come from token validation
+        
+    session_id = f"{exam_id}_{actual_user_id}_{int(datetime.now().timestamp())}"
     chunk_counter = 0  # Track video chunks for this session
     
     try:
-        await exam_manager.connect(websocket, session_id, user_id)
-        print(f"Client connected to exam {exam_id}, session {session_id}")
+        await exam_manager.connect(websocket, session_id, actual_user_id)
+        print(f"Client connected to exam {exam_id}, session {session_id}, user {actual_user_id}")
         
         # Send connection confirmation to frontend
         await websocket.send_json({
@@ -310,8 +352,8 @@ async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str 
         video_dir = os.path.join(data_root_dir, "exam_videos", exam_id)
         os.makedirs(video_dir, exist_ok=True)
         
-        # Update session to active
-        await update_session_status(session_id, "active")
+        # Create or update session to active
+        await create_or_update_session(session_id, exam_id, actual_user_id, "active")
         
         try:
             while True:
@@ -321,7 +363,7 @@ async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str 
                     print(f"Received message: {message}")
                     
                     # Handle message and update chunk counter if needed
-                    result = await handle_exam_message(websocket, session_id, user_id, exam_id, message, video_dir, chunk_counter)
+                    result = await handle_exam_message(websocket, session_id, actual_user_id, exam_id, message, video_dir, chunk_counter)
                     if result and 'chunk_counter' in result:
                         chunk_counter = result['chunk_counter']
                     
@@ -348,7 +390,7 @@ async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str 
         print(f"Client disconnected from exam {exam_id}, session {session_id}")
     finally:
         # Cleanup regardless of how we exit
-        exam_manager.disconnect(session_id, user_id)
+        exam_manager.disconnect(session_id, actual_user_id)
         await update_session_status(session_id, "completed")
         # Finalize video recording on disconnect
         await finalize_video_recording(exam_id, video_dir)
