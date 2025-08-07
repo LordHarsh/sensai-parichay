@@ -805,6 +805,7 @@ class ExamAnalytics(BaseModel):
     suspicious_activity_score: float
     timeline_events: List[ExamTimelineEvent]
     step_timeline: Optional[List[Dict]] = []  # Step-by-step progress timeline
+    suspicious_patterns: Optional[List[Dict]] = []  # Pattern analysis results
 
 
 class VideoDataMessage(BaseModel):
