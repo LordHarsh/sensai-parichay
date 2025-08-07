@@ -463,41 +463,57 @@ async def create_code_drafts_table(cursor):
 
 
 async def init_db():
+    print("Initializing database...")
     # Ensure the database folder exists
     db_folder = os.path.dirname(sqlite_db_path)
     if not os.path.exists(db_folder):
+        print(f"Creating database folder: {db_folder}")
         os.makedirs(db_folder)
 
     if not exists(sqlite_db_path):
+        print(f"Creating database file: {sqlite_db_path}")
         # only set the defaults the first time
         set_db_defaults()
 
     async with get_new_db_connection() as conn:
+        print("Creating tables...")
         cursor = await conn.cursor()
 
-        # if exists(sqlite_db_path):
-        #     if not await check_table_exists(code_drafts_table_name, cursor):
-        #         await create_code_drafts_table(cursor)
+        if exists(sqlite_db_path):
+            print("Database file exists, checking for existing tables...")
+            if not await check_table_exists(code_drafts_table_name, cursor):
+                print("Code drafts table does not exist, creating it...")
+                await create_code_drafts_table(cursor)
+                print("Created code drafts table")
 
-        #     await conn.commit()
-        #     return
+            await conn.commit()
+            return
 
         try:
+            print("Creating tables...")
             await create_organizations_table(cursor)
+            print("Created organizations table")
 
             await create_org_api_keys_table(cursor)
+            print("Created organization API keys table")
 
             await create_users_table(cursor)
+            print("Created users table")
 
             await create_user_organizations_table(cursor)
+            print("Created user organizations table")
 
             await create_milestones_table(cursor)
+            print("Created milestones table")
 
             await create_cohort_tables(cursor)
+            print("Created cohorts and user cohorts tables")
 
             await create_courses_table(cursor)
+            print("Created courses table")
 
             await create_course_cohorts_table(cursor)
+            print("Created course cohorts table")
 
             await create_tasks_table(cursor)
 
