@@ -472,6 +472,16 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
             elif event["type"] == "wpm_tracking":
                 # WPM events don't generate notifications, just stored for analytics
                 pass
+            elif event["type"] == "gaze_tracking" and event["data"].get("looking_away"):
+                print(f"🔍 Gaze Event: User {session_id} looking away at ({event['data']['gaze_x']}, {event['data']['gaze_y']}) with confidence {event['data']['confidence']:.2f}")
+                # Optionally send notification for looking away
+                if event["data"].get("confidence", 0) > 0.7:  # Only if confidence is high
+                    await exam_manager.send_notification(session_id, {
+                        "id": str(uuid.uuid4()),
+                        "message": "Please maintain focus on the exam screen.",
+                        "type": "info",
+                        "timestamp": event["timestamp"]
+                    })
     
     elif message_type == "video_chunk":
         timestamp = message.get("timestamp")
