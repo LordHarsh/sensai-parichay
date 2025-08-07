@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: "Failed to fetch exams" }));
+      const errorData = await response
+        .json()
+        .catch(() => ({ detail: "Failed to fetch exams" }));
       return NextResponse.json(
         { error: errorData.detail || "Failed to fetch exams" },
         { status: response.status }
