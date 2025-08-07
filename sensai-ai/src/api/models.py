@@ -735,12 +735,18 @@ class ExamConfiguration(BaseModel):
     monitoring: Dict
     created_at: datetime
     updated_at: datetime
+    org_id: Optional[int] = None
+    created_by: Optional[int] = None
+    role: str = "teacher"
 
 
 class ExamEvent(BaseModel):
     type: str
     timestamp: int
     data: Dict
+    priority: Optional[int] = 1  # 1=low, 2=medium, 3=high
+    confidence_score: Optional[float] = 0.0  # 0.0-1.0
+    is_flagged: Optional[bool] = False
 
 
 class ExamSession(BaseModel):
@@ -764,6 +770,8 @@ class CreateExamRequest(BaseModel):
     questions: List[ExamQuestion]
     settings: Dict = {}
     monitoring: Dict = {}
+    org_id: Optional[int] = None
+    role: str = "teacher"
 
 
 class ExamSubmissionRequest(BaseModel):
@@ -774,6 +782,29 @@ class ExamSubmissionRequest(BaseModel):
 class ExamEventMessage(BaseModel):
     type: Literal["exam_event"]
     event: ExamEvent
+
+
+class ExamTimelineEvent(BaseModel):
+    id: str
+    session_id: str
+    event_type: str
+    event_data: Dict
+    timestamp: int
+    priority: int = 1
+    confidence_score: float = 0.0
+    is_flagged: bool = False
+    created_at: datetime
+
+
+class ExamAnalytics(BaseModel):
+    session_id: str
+    total_events: int
+    flagged_events: int
+    high_priority_events: int
+    average_confidence_score: float
+    suspicious_activity_score: float
+    timeline_events: List[ExamTimelineEvent]
+    step_timeline: Optional[List[Dict]] = []  # Step-by-step progress timeline
 
 
 class VideoDataMessage(BaseModel):

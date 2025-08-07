@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useAuth } from "@/lib/auth";
 import ExamHeader from "@/components/exam/ExamHeader";
 import QuestionPanel from "@/components/exam/QuestionPanel";
 import VideoRecorder from "@/components/exam/VideoRecorder";
@@ -15,6 +16,7 @@ export default function ExamPage() {
   const { examId } = useParams();
   const router = useRouter();
   const { data: session, status } = useSession();
+  const { user } = useAuth();
   
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -27,6 +29,7 @@ export default function ExamPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [examData, setExamData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   
   const wsRef = useRef<ExamWebSocket | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -35,12 +38,18 @@ export default function ExamPage() {
   useEffect(() => {
     if (status === "loading") return;
     
+    console.log("Session status:", status);
+    console.log("Session data:", session);
+    console.log("User data:", user);
+    
     if (!session) {
+      console.log("No session found, redirecting to login");
       router.push("/login");
       return;
     }
 
     if (!examId) {
+      console.log("No examId found, redirecting to home");
       router.push("/");
       return;
     }
@@ -61,9 +70,23 @@ export default function ExamPage() {
     try {
       setIsLoading(true);
       
+      // Ensure we have a user ID before proceeding
+      // Priority: user.id > session.user.id > session.user.email (as fallback)
+      const userId = user?.id || session?.user?.id || session?.user?.email;
+      console.log("Available user data - user:", user);
+      console.log("Available session user data:", session?.user);
+      console.log("Final userId being used:", userId);
+      
+      if (!userId) {
+        console.error('No valid user identifier available');
+        showNotification('Authentication required. Please log in again.', 'error');
+        router.push('/login');
+        return;
+      }
+      
       const response = await fetch(`/api/exam/${examId}`, {
         headers: {
-          'Authorization': `Bearer ${session?.accessToken}`,
+          'x-user-id': userId,
         },
       });
 
@@ -72,13 +95,30 @@ export default function ExamPage() {
       }
 
       const data = await response.json();
+      console.log("Exam data:", data);
+      
+      // If user is the teacher/creator, redirect to teacher dashboard
+      if (data.is_creator === true) {
+        router.push(`/teacher`);
+        return;
+      }
+      
+      // Everyone else can take the exam as a student
       setExamData(data);
       setQuestions(data.questions || []);
       setTimeRemaining(data.duration * 60);
       
-      wsRef.current = new ExamWebSocket(examId as string, session?.accessToken || '');
+      // Initialize WebSocket with proper user ID and token
+      const token = (session as any)?.accessToken;
+      console.log("Initializing WebSocket with user ID:", userId);
+      console.log("Using access token:", token ? 'Token available' : 'No token');
+      wsRef.current = new ExamWebSocket(examId as string, userId, token);
       wsRef.current.onNotification = handleNotification;
       wsRef.current.onExamUpdate = handleExamUpdate;
+      wsRef.current.onSessionEstablished = (sessionId: string) => {
+        console.log("Session established with ID:", sessionId);
+        setSessionId(sessionId);
+      };
       await wsRef.current.connect();
       
     } catch (error) {
@@ -169,12 +209,26 @@ export default function ExamPage() {
       
       wsRef.current?.sendEvent(event);
       
-      // Use the same user_id that the backend WebSocket uses (hardcoded for now)
-      const userId = session?.user?.id || "user_123";
-      const response = await fetch(`/api/exam/${examId}/submit?user_id=${userId}`, {
+      // Use consistent user ID (same logic as initialization)
+      const userId = user?.id || session?.user?.id || session?.user?.email;
+      console.log("Submitting exam with userId:", userId);
+      console.log("Using sessionId:", sessionId);
+      
+      if (!userId) {
+        throw new Error('User ID not available for submission');
+      }
+      
+      // Build URL with session_id if available
+      let submitUrl = `/api/exam/${examId}/submit?user_id=${userId}`;
+      if (sessionId) {
+        submitUrl += `&session_id=${sessionId}`;
+      }
+      
+      const response = await fetch(submitUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-user-id': userId,
         },
         body: JSON.stringify({ answers, time_taken: (examData?.duration * 60) - timeRemaining }),
       });

@@ -478,6 +478,7 @@ async def create_exams_table(cursor):
                 video_file_path TEXT,
                 org_id INTEGER,
                 created_by INTEGER,
+                role TEXT DEFAULT 'teacher',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
@@ -491,6 +492,10 @@ async def create_exams_table(cursor):
 
     await cursor.execute(
         f"""CREATE INDEX idx_exam_created_by ON {exams_table_name} (created_by)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_role ON {exams_table_name} (role)"""
     )
 
 
@@ -534,6 +539,9 @@ async def create_exam_events_table(cursor):
                 event_type TEXT NOT NULL,
                 event_data TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
+                priority INTEGER DEFAULT 1,
+                confidence_score REAL DEFAULT 0.0,
+                is_flagged BOOLEAN DEFAULT FALSE,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES {exam_sessions_table_name}(id) ON DELETE CASCADE
             )"""
@@ -545,6 +553,14 @@ async def create_exam_events_table(cursor):
 
     await cursor.execute(
         f"""CREATE INDEX idx_exam_event_type ON {exam_events_table_name} (event_type)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_event_flagged ON {exam_events_table_name} (is_flagged)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_exam_event_priority ON {exam_events_table_name} (priority)"""
     )
 
     await cursor.execute(

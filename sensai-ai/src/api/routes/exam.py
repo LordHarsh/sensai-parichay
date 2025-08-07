@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from api.db import (
     exams_table_name,
     exam_sessions_table_name,
-    exam_events_table_name
+    exam_events_table_name,
+    users_table_name,
+    user_organizations_table_name
 )
 from typing import List, Optional
 import json
@@ -13,7 +15,9 @@ from api.models import (
     ExamSubmissionRequest, 
     ExamConfiguration,
     ExamSession,
-    ExamQuestion
+    ExamQuestion,
+    ExamTimelineEvent,
+    ExamAnalytics
 )
 from api.utils.db import get_new_db_connection
 from api.config import (
@@ -26,18 +30,21 @@ router = APIRouter(prefix="/exam", tags=["exam"])
 
 
 @router.post("/", response_model=dict)
-async def create_exam(exam_request: CreateExamRequest):
+async def create_exam(exam_request: CreateExamRequest, user_id: int = Header(..., alias="x-user-id")):
     try:
         exam_id = str(uuid.uuid4())
         
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
+            # Simplified: Anyone can create an exam and becomes the teacher automatically
+            # No need to check organization permissions
+            
             # Create exam configuration
             await cursor.execute(
                 f"""INSERT INTO {exams_table_name} 
-                    (id, title, description, duration, questions, settings, monitoring, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (id, title, description, duration, questions, settings, monitoring, org_id, created_by, role, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     exam_id,
                     exam_request.title,
@@ -46,6 +53,9 @@ async def create_exam(exam_request: CreateExamRequest):
                     json.dumps([q.dict() for q in exam_request.questions]),
                     json.dumps(exam_request.settings),
                     json.dumps(exam_request.monitoring),
+                    exam_request.org_id,
+                    user_id,
+                    'teacher',  # Creator is always teacher
                     datetime.now(),
                     datetime.now()
                 )
@@ -55,19 +65,22 @@ async def create_exam(exam_request: CreateExamRequest):
             
         return {"id": exam_id, "message": "Exam created successfully"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error creating exam: {e}")
         raise HTTPException(status_code=500, detail="Failed to create exam")
 
 
 @router.get("/{exam_id}", response_model=dict)
-async def get_exam(exam_id: str):
+async def get_exam(exam_id: str, user_id: int = Header(None, alias="x-user-id")):
     try:
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
             await cursor.execute(
-                f"""SELECT id, title, description, duration, questions, settings, monitoring, created_at, updated_at
+                f"""SELECT id, title, description, duration, questions, settings, monitoring, 
+                           created_at, updated_at, org_id, created_by
                     FROM {exams_table_name} WHERE id = ?""",
                 (exam_id,)
             )
@@ -86,8 +99,35 @@ async def get_exam(exam_id: str):
                 "settings": json.loads(row[5] or "{}"),
                 "monitoring": json.loads(row[6] or "{}"),
                 "created_at": row[7],
-                "updated_at": row[8]
+                "updated_at": row[8],
+                "org_id": row[9],
+                "created_by": row[10]
             }
+            
+            # Simplified role detection: creator is teacher, everyone else is student
+            if user_id:
+                if user_id == row[10]:  # created_by
+                    exam_data["user_role"] = "teacher"
+                    exam_data["is_creator"] = True
+                else:
+                    exam_data["user_role"] = "student"
+                    exam_data["is_creator"] = False
+                    # Remove sensitive settings for students
+                    exam_data.pop("settings", None)
+                    exam_data.pop("monitoring", None)
+                    # Remove correct answers from questions for students
+                    questions = exam_data["questions"]
+                    for question in questions:
+                        if "correct_answer" in question:
+                            question.pop("correct_answer")
+                        # For students, convert options back to simple format for compatibility
+                        if question.get("options"):
+                            for option in question["options"]:
+                                if hasattr(option, 'get') and option.get('is_correct'):
+                                    option.pop('is_correct', None)
+            else:
+                exam_data["user_role"] = "student"  # Default to student for anonymous users
+                exam_data["is_creator"] = False
             
             return exam_data
             
@@ -155,40 +195,55 @@ async def start_exam_session(exam_id: str, user_id: str = Query(...)):
 
 
 @router.post("/{exam_id}/submit", response_model=dict) 
-async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: str = Query(...)):
+async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: str = Query(...), session_id: str = Query(None)):
     try:
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
-            # Find active session
-            await cursor.execute(
-                f"""SELECT id FROM {exam_sessions_table_name}
-                    WHERE exam_id = ? AND user_id = ? AND status IN ('active', 'pending')""",
-                (exam_id, user_id)
-            )
-            
-            session_row = await cursor.fetchone()
-            if not session_row:
-                # Create a new session automatically if none exists
-                session_id = f"{exam_id}_{user_id}_{int(datetime.now().timestamp())}"
-                
+            # If session_id is provided, use it; otherwise find or create one
+            if session_id:
+                # Check if the provided session_id exists and belongs to this user
                 await cursor.execute(
-                    f"""INSERT INTO {exam_sessions_table_name}
-                        (id, exam_id, user_id, start_time, status, answers, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        exam_id, 
-                        user_id,
-                        datetime.now(),
-                        'active',
-                        json.dumps({}),
-                        datetime.now(),
-                        datetime.now()
-                    )
+                    f"""SELECT id, status FROM {exam_sessions_table_name}
+                        WHERE id = ? AND user_id = ? AND exam_id = ?""",
+                    (session_id, user_id, exam_id)
                 )
+                session_row = await cursor.fetchone()
+                
+                if not session_row:
+                    raise HTTPException(status_code=404, detail="Session not found or doesn't belong to user")
+                    
+                existing_session_id = session_row[0]
             else:
-                session_id = session_row[0]
+                # Find active session (original logic)
+                await cursor.execute(
+                    f"""SELECT id FROM {exam_sessions_table_name}
+                        WHERE exam_id = ? AND user_id = ? AND status IN ('active', 'pending')""",
+                    (exam_id, user_id)
+                )
+                
+                session_row = await cursor.fetchone()
+                if not session_row:
+                    # Create a new session automatically if none exists
+                    existing_session_id = f"{exam_id}_{user_id}_{int(datetime.now().timestamp())}"
+                    
+                    await cursor.execute(
+                        f"""INSERT INTO {exam_sessions_table_name}
+                            (id, exam_id, user_id, start_time, status, answers, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            existing_session_id,
+                            exam_id, 
+                            user_id,
+                            datetime.now(),
+                            'active',
+                            json.dumps({}),
+                            datetime.now(),
+                            datetime.now()
+                        )
+                    )
+                else:
+                    existing_session_id = session_row[0]
             
             # Calculate score (basic implementation)
             score = await calculate_exam_score(exam_id, submission.answers, cursor)
@@ -198,12 +253,12 @@ async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: 
                 f"""UPDATE {exam_sessions_table_name}
                     SET end_time = ?, status = 'completed', answers = ?, score = ?, updated_at = ?
                     WHERE id = ?""",
-                (datetime.now(), json.dumps(submission.answers), score, datetime.now(), session_id)
+                (datetime.now(), json.dumps(submission.answers), score, datetime.now(), existing_session_id)
             )
             
             await conn.commit()
             
-        return {"message": "Exam submitted successfully", "score": score, "session_id": session_id}
+        return {"message": "Exam submitted successfully", "score": score, "session_id": existing_session_id}
         
     except HTTPException:
         raise
@@ -218,24 +273,52 @@ async def get_exam_sessions(exam_id: str):
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
+            # Join with users table to get user information and count events
             await cursor.execute(
-                f"""SELECT id, user_id, start_time, end_time, status, score, created_at
-                    FROM {exam_sessions_table_name}
-                    WHERE exam_id = ?
-                    ORDER BY created_at DESC""",
+                f"""SELECT 
+                    s.id, 
+                    s.user_id, 
+                    u.email,
+                    u.first_name,
+                    u.last_name,
+                    s.start_time, 
+                    s.end_time, 
+                    s.status, 
+                    s.score, 
+                    s.created_at,
+                    COUNT(e.id) as event_count
+                    FROM {exam_sessions_table_name} s
+                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    LEFT JOIN {exam_events_table_name} e ON s.id = e.session_id
+                    WHERE s.exam_id = ?
+                    GROUP BY s.id, s.user_id, u.email, u.first_name, u.last_name, s.start_time, s.end_time, s.status, s.score, s.created_at
+                    ORDER BY s.created_at DESC""",
                 (exam_id,)
             )
             
             sessions = []
             async for row in cursor:
+                # Create user display name: prefer "FirstName LastName", fallback to email
+                user_display = "Unknown User"
+                if row[2]:  # email exists
+                    if row[3] and row[4]:  # first_name and last_name exist
+                        user_display = f"{row[3]} {row[4]}"
+                    elif row[3]:  # only first_name exists
+                        user_display = row[3]
+                    else:
+                        user_display = row[2]  # fallback to email
+                
                 sessions.append({
                     "id": row[0],
                     "user_id": row[1], 
-                    "start_time": row[2],
-                    "end_time": row[3],
-                    "status": row[4],
-                    "score": row[5],
-                    "created_at": row[6]
+                    "user_display": user_display,
+                    "user_email": row[2],
+                    "start_time": row[5],
+                    "end_time": row[6],
+                    "status": row[7],
+                    "score": row[8],
+                    "created_at": row[9],
+                    "event_count": row[10]
                 })
             
             return sessions
@@ -298,6 +381,238 @@ async def get_exam_results(exam_id: str, session_id: str):
     except Exception as e:
         print(f"Error fetching exam results: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch exam results")
+
+
+@router.get("/{exam_id}/analytics/{session_id}", response_model=ExamAnalytics)
+async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Header(..., alias="x-user-id")):
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Simplified permission check - only exam creator can view analytics
+            await cursor.execute(
+                f"""SELECT created_by FROM {exams_table_name} WHERE id = ?""",
+                (exam_id,)
+            )
+            exam_info = await cursor.fetchone()
+            if not exam_info:
+                raise HTTPException(status_code=404, detail="Exam not found")
+            
+            created_by = exam_info[0]
+            
+            # Only creator (teacher) can view analytics
+            if created_by != user_id:
+                raise HTTPException(status_code=403, detail="Only the exam creator can view analytics")
+            
+            # Get all events for the session with detailed timeline
+            await cursor.execute(
+                f"""SELECT event_type, event_data, timestamp FROM {exam_events_table_name}
+                    WHERE session_id = ? ORDER BY timestamp ASC""",
+                (session_id,)
+            )
+            
+            events = []
+            total_events = 0
+            flagged_events = 0
+            high_priority_events = 0
+            confidence_scores = []
+            step_timeline = []
+            
+            # Track exam progress steps
+            exam_started = False
+            questions_visited = set()
+            answers_submitted = set()
+            
+            async for row in cursor:
+                total_events += 1
+                event_data = json.loads(row[1])
+                event_type = row[0]
+                timestamp = row[2]
+                
+                # Calculate priority and flagging based on event type
+                priority = 1
+                confidence_score = 0.5
+                is_flagged = False
+                
+                # Define suspicious activities with priority and confidence
+                if event_type == 'tab_switch':
+                    priority = 3
+                    confidence_score = 0.9
+                    is_flagged = True
+                    flagged_events += 1
+                    high_priority_events += 1
+                elif event_type == 'copy_paste':
+                    priority = 3
+                    confidence_score = 0.8
+                    is_flagged = True
+                    flagged_events += 1
+                    high_priority_events += 1
+                elif event_type == 'keystroke_anomaly':
+                    priority = 2
+                    confidence_score = 0.7
+                    is_flagged = True
+                    flagged_events += 1
+                elif event_type == 'window_focus_lost':
+                    priority = 2
+                    confidence_score = 0.6
+                    is_flagged = True
+                    flagged_events += 1
+                elif event_type == 'face_not_detected':
+                    priority = 2
+                    confidence_score = 0.7
+                    is_flagged = True
+                    flagged_events += 1
+                
+                confidence_scores.append(confidence_score)
+                
+                # Create timeline event
+                timeline_event = ExamTimelineEvent(
+                    id=f"{session_id}_{total_events}",
+                    session_id=session_id,
+                    event_type=event_type,
+                    event_data=event_data,
+                    timestamp=row[2],
+                    priority=priority,
+                    confidence_score=confidence_score,
+                    is_flagged=is_flagged,
+                    created_at=datetime.now()
+                )
+                events.append(timeline_event)
+                
+                # Build step-by-step progress timeline
+                if event_type == 'exam_started':
+                    exam_started = True
+                    step_timeline.append({
+                        "step": "exam_started",
+                        "title": "Exam Started",
+                        "description": "Student began the exam session",
+                        "timestamp": timestamp,
+                        "status": "completed",
+                        "details": event_data
+                    })
+                elif event_type == 'question_viewed':
+                    question_id = event_data.get('question_id')
+                    if question_id and question_id not in questions_visited:
+                        questions_visited.add(question_id)
+                        step_timeline.append({
+                            "step": f"question_viewed_{question_id}",
+                            "title": f"Question {len(questions_visited)} Viewed",
+                            "description": f"Student viewed question {question_id}",
+                            "timestamp": timestamp,
+                            "status": "completed",
+                            "details": event_data
+                        })
+                elif event_type == 'answer_changed':
+                    question_id = event_data.get('question_id')
+                    if question_id:
+                        step_timeline.append({
+                            "step": f"answer_changed_{question_id}",
+                            "title": f"Answer Modified",
+                            "description": f"Student modified answer for question {question_id}",
+                            "timestamp": timestamp,
+                            "status": "completed" if event_data.get('answer') else "in_progress",
+                            "details": event_data
+                        })
+                elif event_type == 'answer_submitted':
+                    question_id = event_data.get('question_id')
+                    if question_id and question_id not in answers_submitted:
+                        answers_submitted.add(question_id)
+                        step_timeline.append({
+                            "step": f"answer_submitted_{question_id}",
+                            "title": f"Answer Submitted",
+                            "description": f"Student submitted answer for question {question_id}",
+                            "timestamp": timestamp,
+                            "status": "completed",
+                            "details": event_data
+                        })
+                elif event_type == 'exam_submitted':
+                    step_timeline.append({
+                        "step": "exam_submitted",
+                        "title": "Exam Submitted",
+                        "description": "Student completed and submitted the exam",
+                        "timestamp": timestamp,
+                        "status": "completed",
+                        "details": event_data
+                    })
+                elif is_flagged:
+                    # Add flagged events to timeline
+                    step_timeline.append({
+                        "step": f"flagged_{event_type}_{timestamp}",
+                        "title": f"⚠️ Flagged Event: {event_type.replace('_', ' ').title()}",
+                        "description": f"Suspicious activity detected",
+                        "timestamp": timestamp,
+                        "status": "flagged",
+                        "priority": priority,
+                        "confidence": confidence_score,
+                        "details": event_data
+                    })
+            
+            # Calculate analytics
+            avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+            suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2)  # Scale suspicious activity
+            
+            analytics = ExamAnalytics(
+                session_id=session_id,
+                total_events=total_events,
+                flagged_events=flagged_events,
+                high_priority_events=high_priority_events,
+                average_confidence_score=avg_confidence,
+                suspicious_activity_score=suspicious_score,
+                timeline_events=events,
+                step_timeline=step_timeline  # Add step-by-step timeline
+            )
+            
+            return analytics
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching exam analytics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
+
+
+@router.get("/teacher/{teacher_id}/exams", response_model=List[dict])
+async def get_teacher_exams(teacher_id: int, user_id: int = Header(..., alias="x-user-id")):
+    """Get all exams created by a teacher (only accessible by the teacher themselves)"""
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Simplified: Only the teacher themselves can access their exams
+            if teacher_id != user_id:
+                raise HTTPException(status_code=403, detail="You can only access your own exams")
+            
+            # Get exams created by teacher
+            await cursor.execute(
+                f"""SELECT id, title, description, duration, questions, settings, monitoring, 
+                           created_at, updated_at, org_id FROM {exams_table_name}
+                    WHERE created_by = ? ORDER BY created_at DESC""",
+                (teacher_id,)
+            )
+            
+            exams = []
+            async for row in cursor:
+                exam_data = {
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "duration": row[3],
+                    "questions": json.loads(row[4]),
+                    "settings": json.loads(row[5] or "{}"),
+                    "monitoring": json.loads(row[6] or "{}"),
+                    "created_at": row[7],
+                    "updated_at": row[8],
+                    "org_id": row[9]
+                }
+                exams.append(exam_data)
+            
+            return exams
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching teacher exams: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch exams")
 
 
 async def calculate_exam_score(exam_id: str, answers: dict, cursor) -> float:
