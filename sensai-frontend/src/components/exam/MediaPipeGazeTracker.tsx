@@ -22,6 +22,11 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
   const [isLookingAway, setIsLookingAway] = useState(false);
   const [gazePosition, setGazePosition] = useState<GazePosition | null>(null);
   const [awayDuration, setAwayDuration] = useState<number>(0);
+  
+  // Calibration baseline - center position when looking straight
+  const [baseline, setBaseline] = useState<{x: number, y: number} | null>(null);
+  const calibrationSamples = useRef<{x: number, y: number}[]>([]);
+  const calibrationStartTime = useRef<number>(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,9 +38,9 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
   const cheatingWarningLogged = useRef<boolean>(false);
   const calibrationPoints = useRef<GazePosition[]>([]);
 
-  // Constants - adjusted for better accuracy
-  const SCREEN_MARGIN = 100; // pixels from edge to consider "looking away" - increased for better tolerance
-  const GAZE_AWAY_THRESHOLD = 2000; // ms before considering "looking away" - increased to reduce false positives
+  // Constants - optimized for better detection
+  const SCREEN_MARGIN = 50; // pixels from edge to consider "looking away" - reduced for better sensitivity
+  const GAZE_AWAY_THRESHOLD = 1000; // ms before considering "looking away" - reduced for faster detection
   const CHEATING_THRESHOLD = 10000; // 10 seconds in ms
   const TRACKING_INTERVAL = 500; // ms between gaze tracking events
 
@@ -67,112 +72,86 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
     if (!landmarks || landmarks.length < 468) return null;
 
     try {
-      // Key facial landmarks for head pose estimation
+      // Key facial landmarks
       const noseTip = landmarks[1];        // Nose tip
-      const chinTip = landmarks[175];      // Chin
       const leftEyeCorner = landmarks[33]; // Left eye outer corner
       const rightEyeCorner = landmarks[263]; // Right eye outer corner
 
-      // Eye region landmarks for calculating eye centers
+      // Simplified eye center calculation
       const leftEyeCenter = {
-        x: (landmarks[33].x + landmarks[133].x) / 2, // Average of outer and inner corners
-        y: (landmarks[159].y + landmarks[145].y) / 2  // Average of top and bottom
+        x: (landmarks[33].x + landmarks[133].x) / 2,
+        y: (landmarks[159].y + landmarks[145].y) / 2
       };
       const rightEyeCenter = {
-        x: (landmarks[362].x + landmarks[263].x) / 2, // Average of outer and inner corners  
-        y: (landmarks[386].y + landmarks[374].y) / 2  // Average of top and bottom
+        x: (landmarks[362].x + landmarks[263].x) / 2,
+        y: (landmarks[386].y + landmarks[374].y) / 2
       };
 
-      // Use actual iris landmarks if available (MediaPipe provides iris landmarks 468-477)
-      // If iris landmarks aren't available, fall back to eye center estimation
-      let leftIris, rightIris;
-      
-      if (landmarks.length >= 478) {
-        // MediaPipe iris landmarks: 468-472 for left eye iris, 473-477 for right eye iris
-        leftIris = {
-          x: (landmarks[468].x + landmarks[469].x + landmarks[470].x + landmarks[471].x + landmarks[472].x) / 5,
-          y: (landmarks[468].y + landmarks[469].y + landmarks[470].y + landmarks[471].y + landmarks[472].y) / 5
-        };
-        rightIris = {
-          x: (landmarks[473].x + landmarks[474].x + landmarks[475].x + landmarks[476].x + landmarks[477].x) / 5,
-          y: (landmarks[473].y + landmarks[474].y + landmarks[475].y + landmarks[476].y + landmarks[477].y) / 5
-        };
-      } else {
-        // Fallback: estimate iris position within the eye region
-        // Use a more sophisticated approach based on eye geometry
-        const leftEyeWidth = Math.abs(landmarks[133].x - landmarks[33].x);
-        const leftEyeHeight = Math.abs(landmarks[145].y - landmarks[159].y);
-        const rightEyeWidth = Math.abs(landmarks[263].x - landmarks[362].x);
-        const rightEyeHeight = Math.abs(landmarks[374].y - landmarks[386].y);
-        
-        // Estimate iris position (center of eye when looking straight)
-        leftIris = {
-          x: leftEyeCenter.x,
-          y: leftEyeCenter.y
-        };
-        rightIris = {
-          x: rightEyeCenter.x,
-          y: rightEyeCenter.y
-        };
-      }
-
-      // Calculate gaze vectors for each eye relative to eye center
-      const leftGazeVector = {
-        x: leftIris.x - leftEyeCenter.x,
-        y: leftIris.y - leftEyeCenter.y
-      };
-      const rightGazeVector = {
-        x: rightIris.x - rightEyeCenter.x, 
-        y: rightIris.y - rightEyeCenter.y
+      // Calculate face center and orientation
+      const faceCenter = {
+        x: (leftEyeCenter.x + rightEyeCenter.x) / 2,
+        y: (leftEyeCenter.y + rightEyeCenter.y) / 2
       };
 
-      // Average both eyes for more stable gaze direction
-      const avgGazeVector = {
-        x: (leftGazeVector.x + rightGazeVector.x) / 2,
-        y: (leftGazeVector.y + rightGazeVector.y) / 2
-      };
+      // Calculate head rotation based on nose position relative to face center
+      const rawHeadRotationX = (noseTip.x - faceCenter.x); // Horizontal head rotation
+      const rawHeadRotationY = (noseTip.y - faceCenter.y); // Vertical head rotation
 
-      // Calculate head pose vector for correction
-      const headVector = {
-        x: (leftEyeCorner.x + rightEyeCorner.x) / 2 - noseTip.x,
-        y: (leftEyeCorner.y + rightEyeCorner.y) / 2 - noseTip.y
-      };
-
-      // Apply head pose correction to gaze vector
-      const correctedGaze = {
-        x: avgGazeVector.x - headVector.x * 0.2, 
-        y: avgGazeVector.y - headVector.y * 0.2
-      };
-
-      // Convert to screen coordinates using proper scaling
-      const videoWidth = videoRef.current?.videoWidth || 640;
-      const videoHeight = videoRef.current?.videoHeight || 480;
-      
-      // Scale gaze vector to screen dimensions
-      const gazeScreenX = correctedGaze.x * window.innerWidth * 10; // Amplify sensitivity
-      const gazeScreenY = correctedGaze.y * window.innerHeight * 10;
-
-      // Calculate final screen position (center + gaze offset)
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      
-      const screenX = centerX + gazeScreenX;
-      const screenY = centerY + gazeScreenY;
-
-      // Calculate confidence based on eye detection quality
-      const eyeDistance = Math.abs(rightEyeCorner.x - leftEyeCorner.x);
-      const faceArea = eyeDistance * Math.abs(chinTip.y - noseTip.y);
-      const confidence = Math.min(1.0, Math.max(0.4, faceArea * 200));
-
-      // Debug logging every few seconds
+      // Auto-calibration: collect samples for 3 seconds, then average them
       const now = Date.now();
-      if (now % 3000 < 100) {
-        console.log(`[MediaPipe Debug] Gaze: (${screenX.toFixed(1)}, ${screenY.toFixed(1)}) | Eye Centers: L(${leftEyeCenter.x.toFixed(3)}, ${leftEyeCenter.y.toFixed(3)}) R(${rightEyeCenter.x.toFixed(3)}, ${rightEyeCenter.y.toFixed(3)}) | Iris: L(${leftIris.x.toFixed(3)}, ${leftIris.y.toFixed(3)}) R(${rightIris.x.toFixed(3)}, ${rightIris.y.toFixed(3)})`);
+      if (!baseline) {
+        if (calibrationStartTime.current === 0) {
+          calibrationStartTime.current = now;
+          console.log(`[MediaPipe] Starting calibration - please look straight at the screen for 3 seconds...`);
+        }
+        
+        // Collect samples for 3 seconds
+        if (now - calibrationStartTime.current < 3000) {
+          calibrationSamples.current.push({ x: rawHeadRotationX, y: rawHeadRotationY });
+          return {
+            x: window.innerWidth / 2, // Return center during calibration
+            y: window.innerHeight / 2,
+            confidence: 0.5
+          };
+        } else {
+          // Calculate average baseline from collected samples
+          const avgX = calibrationSamples.current.reduce((sum, s) => sum + s.x, 0) / calibrationSamples.current.length;
+          const avgY = calibrationSamples.current.reduce((sum, s) => sum + s.y, 0) / calibrationSamples.current.length;
+          setBaseline({ x: avgX, y: avgY });
+          setIsCalibrated(true);
+          console.log(`[MediaPipe] Calibration complete! Baseline: (${avgX.toFixed(3)}, ${avgY.toFixed(3)}) from ${calibrationSamples.current.length} samples`);
+        }
       }
 
+      // Calculate relative movement from baseline (calibrated position)
+      const calibratedX = baseline ? rawHeadRotationX - baseline.x : 0;
+      const calibratedY = baseline ? rawHeadRotationY - baseline.y : 0;
+
+      // Map to screen coordinates with reasonable sensitivity (much lower than before)
+      const screenCenterX = window.innerWidth / 2;
+      const screenCenterY = window.innerHeight / 2;
+      
+      // Reduced sensitivity for more stable detection
+      const gazeX = screenCenterX + (calibratedX * window.innerWidth * 3);
+      const gazeY = screenCenterY + (calibratedY * window.innerHeight * 3);
+
+      // Calculate confidence based on face detection quality
+      const eyeDistance = Math.abs(rightEyeCorner.x - leftEyeCorner.x);
+      const faceSize = eyeDistance * Math.abs(landmarks[175].y - landmarks[10].y); // width * height
+      const confidence = Math.min(1.0, Math.max(0.5, faceSize * 100));
+
+      // Debug logging
+      if (now % 3000 < 100) {
+        console.log(`[MediaPipe Debug] Raw: (${rawHeadRotationX.toFixed(3)}, ${rawHeadRotationY.toFixed(3)}) | Calibrated: (${calibratedX.toFixed(3)}, ${calibratedY.toFixed(3)}) | Gaze: (${gazeX.toFixed(1)}, ${gazeY.toFixed(1)}) | Screen: ${window.innerWidth}x${window.innerHeight}`);
+        if (baseline) {
+          console.log(`[MediaPipe Debug] Baseline: (${baseline.x.toFixed(3)}, ${baseline.y.toFixed(3)})`);
+        }
+      }
+
+      // DON'T clamp coordinates - let them go outside screen bounds for proper "looking away" detection
       return {
-        x: Math.max(-100, Math.min(window.innerWidth + 100, screenX)), // Allow some margin for edge detection
-        y: Math.max(-100, Math.min(window.innerHeight + 100, screenY)),
+        x: gazeX,
+        y: gazeY,
         confidence
       };
     } catch (error) {
@@ -195,9 +174,14 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
       gazePos.y < SCREEN_MARGIN || 
       gazePos.y > window.innerHeight - SCREEN_MARGIN;
 
-    // Debug logging (less frequent, more useful)
-    if (now % 5000 < 100) { // Log every 5 seconds
-      console.log(`[MediaPipe Gaze] Position: (${Math.round(gazePos.x)}, ${Math.round(gazePos.y)}) | Screen: ${window.innerWidth}x${window.innerHeight} | Margin: ${SCREEN_MARGIN}px | Looking away: ${isOutsideScreen} | Confidence: ${(gazePos.confidence * 100).toFixed(0)}%`);
+    // Enhanced debug logging (more frequent for testing)
+    if (now % 2000 < 100) { // Log every 2 seconds for better debugging
+      const leftMargin = gazePos.x < SCREEN_MARGIN;
+      const rightMargin = gazePos.x > window.innerWidth - SCREEN_MARGIN;
+      const topMargin = gazePos.y < SCREEN_MARGIN;
+      const bottomMargin = gazePos.y > window.innerHeight - SCREEN_MARGIN;
+      console.log(`[MediaPipe Gaze] Position: (${Math.round(gazePos.x)}, ${Math.round(gazePos.y)}) | Screen: ${window.innerWidth}x${window.innerHeight} | Margin: ${SCREEN_MARGIN}px`);
+      console.log(`[MediaPipe Gaze] Margins - Left: ${leftMargin}, Right: ${rightMargin}, Top: ${topMargin}, Bottom: ${bottomMargin} | Looking away: ${isOutsideScreen} | Confidence: ${(gazePos.confidence * 100).toFixed(0)}%`);
     }
 
     // Handle looking away detection
@@ -210,6 +194,7 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
         
         if (awayDuration > GAZE_AWAY_THRESHOLD && !isLookingAway) {
           setIsLookingAway(true);
+          // Send event when starting to look away
           logGazeEvent(gazePos, now, true);
           console.log('🔍 MediaPipe: Exam taker is looking away from screen');
         }
@@ -219,6 +204,7 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
           console.log('---MIGHT BE CHEATING---');
           console.log(`🚨 ALERT: Exam taker has been looking away for ${Math.round(awayDuration / 1000)} seconds`);
           
+          // Send extended violation event
           const cheatingEvent: GazeTrackingEvent = {
             type: 'gaze_tracking',
             timestamp: now,
@@ -246,6 +232,7 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
         
         if (isLookingAway) {
           setIsLookingAway(false);
+          // Send event when returning to look at screen (end of violation)
           logGazeEvent(gazePos, now, false);
           console.log(`✅ MediaPipe: Exam taker is looking back at screen (was away for ${Math.round(awayDuration / 1000)}s)`);
         }
@@ -255,11 +242,8 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
       }
     }
 
-    // Log periodic gaze tracking events
-    if (now - lastGazeTime.current > TRACKING_INTERVAL) {
-      logGazeEvent(gazePos, now, isOutsideScreen);
-      lastGazeTime.current = now;
-    }
+    // REMOVED: No longer send periodic gaze tracking events when looking normally
+    // Only send events when violations occur (looking away = true) or when returning to normal (looking away = false)
   }, [calculateGazePosition, isLookingAway, logGazeEvent, websocket]);
 
   const processVideoFrame = useCallback(() => {
@@ -419,8 +403,10 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
         color = 'bg-green-500';
       }
     } else if (isInitialized && !isCalibrated) {
-      status = 'Calibrating';
-      color = 'bg-yellow-500';
+      const elapsed = calibrationStartTime.current ? Math.round((Date.now() - calibrationStartTime.current) / 1000) : 0;
+      const remaining = Math.max(0, 3 - elapsed);
+      status = `Calibrating (${remaining}s)`;
+      color = 'bg-yellow-500 animate-pulse';
     } else if (enabled) {
       status = 'Starting...';
       color = 'bg-blue-500';

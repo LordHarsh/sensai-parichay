@@ -14,7 +14,15 @@
       "Bash(mv:*)",
       "Bash(npm uninstall:*)",
       "WebFetch(domain:medium.com)",
-      "WebFetch(domain:kh-monib.medium.com)"
+      "WebFetch(domain:kh-monib.medium.com)",
+      "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src python src/api/db/__init__.py)",
+      "Bash(venv/bin/python -m pip install:*)",
+      "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src venv/bin/python src/api/db/__init__.py)",
+      "Bash(venv/bin/python:*)",
+      "Bash(PYTHONPATH=/mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/src venv/bin/python /mnt/e/work/hackathons/hyperverge-sensai/sensai-ai/migrate_exam_roles.py)",
+      "Bash(npm run dev:*)",
+      "Bash(ss:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": []
   }

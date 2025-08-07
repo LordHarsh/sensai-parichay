@@ -12,14 +12,14 @@ export default function CreateExamPage() {
   const { data: session } = useSession();
   const { user } = useAuth();
   const { schools } = useSchools();
-  
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState(60); // minutes
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
-  
+
   // Cheating detection settings
   const [monitoringSettings, setMonitoringSettings] = useState({
     video_recording: true,
@@ -28,10 +28,10 @@ export default function CreateExamPage() {
     keystroke_logging: true,
     mouse_tracking: true,
     face_detection: true,
-    gaze_tracking: false,
+    gaze_tracking: true,
     network_monitoring: true
   });
-  
+
   // Exam behavior settings
   const [examSettings, setExamSettings] = useState({
     allow_tab_switch: false,
@@ -51,17 +51,17 @@ export default function CreateExamPage() {
       type,
       question: "",
       points: 1,
-      ...(type === 'multiple_choice' ? { 
+      ...(type === 'multiple_choice' ? {
         options: [
           { id: `opt_${Date.now()}_1`, text: "", is_correct: false },
           { id: `opt_${Date.now()}_2`, text: "", is_correct: false },
           { id: `opt_${Date.now()}_3`, text: "", is_correct: false },
           { id: `opt_${Date.now()}_4`, text: "", is_correct: false }
-        ], 
-        correct_answer: "" 
+        ],
+        correct_answer: ""
       } : {})
     };
-    
+
     setQuestions(prev => [...prev, newQuestion]);
   };
 
@@ -104,7 +104,7 @@ export default function CreateExamPage() {
     }
 
     setIsCreating(true);
-    
+
     try {
       const examData = {
         title,
@@ -113,8 +113,7 @@ export default function CreateExamPage() {
         questions,
         settings: examSettings,
         monitoring: monitoringSettings,
-        org_id: selectedOrgId,
-        role: "teacher"
+        org_id: selectedOrgId
       };
 
       const response = await fetch('/api/exam/create', {
@@ -132,7 +131,7 @@ export default function CreateExamPage() {
 
       const result = await response.json();
       router.push(`/exam/${result.id}/teacher`);
-      
+
     } catch (error) {
       console.error('Error creating exam:', error);
       alert('Failed to create exam. Please try again.');
@@ -152,7 +151,7 @@ export default function CreateExamPage() {
         <div className="space-y-8">
           <div className="bg-gray-800 p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Title *</label>
@@ -164,7 +163,7 @@ export default function CreateExamPage() {
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium mb-2">Description *</label>
                 <textarea
@@ -175,7 +174,7 @@ export default function CreateExamPage() {
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium mb-2">Duration (minutes) *</label>
                 <input
@@ -243,7 +242,7 @@ export default function CreateExamPage() {
                         </button>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">Question *</label>
@@ -255,7 +254,7 @@ export default function CreateExamPage() {
                           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
                         />
                       </div>
-                      
+
                       {question.type === 'multiple_choice' && question.options && (
                         <div>
                           <label className="block text-sm font-medium mb-2">Options *</label>
@@ -284,7 +283,7 @@ export default function CreateExamPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       <div className="flex items-center space-x-4">
                         <div>
                           <label className="block text-sm font-medium mb-1">Points</label>
@@ -297,13 +296,13 @@ export default function CreateExamPage() {
                             className="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                        
+
                         {question.type === 'code' && (
                           <div>
                             <label className="block text-sm font-medium mb-1">Language</label>
                             <select
                               value={question.metadata?.language || 'javascript'}
-                              onChange={(e) => updateQuestion(index, { 
+                              onChange={(e) => updateQuestion(index, {
                                 metadata: { ...question.metadata, language: e.target.value }
                               })}
                               className="bg-gray-700 border border-gray-600 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
@@ -362,7 +361,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Allow Copy/Paste</label>
                   <input
@@ -375,7 +374,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Require Camera</label>
                   <input
@@ -388,7 +387,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Require Microphone</label>
                   <input
@@ -402,7 +401,7 @@ export default function CreateExamPage() {
                   />
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Fullscreen Required</label>
@@ -416,7 +415,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Auto Submit</label>
                   <input
@@ -429,7 +428,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Shuffle Questions</label>
                   <input
@@ -442,7 +441,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Show Timer</label>
                   <input
@@ -457,7 +456,7 @@ export default function CreateExamPage() {
                 </div>
               </div>
             </div>
-            
+
             {examSettings.allow_tab_switch && (
               <div className="mt-4">
                 <label className="block text-sm font-medium mb-2">Maximum Tab Switches</label>
@@ -496,7 +495,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Audio Recording</label>
@@ -512,7 +511,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Screen Recording</label>
@@ -528,7 +527,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Keystroke Logging</label>
@@ -545,7 +544,7 @@ export default function CreateExamPage() {
                   />
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -562,7 +561,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Face Detection</label>
@@ -578,7 +577,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Gaze Tracking</label>
@@ -594,7 +593,7 @@ export default function CreateExamPage() {
                     className="rounded"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-medium">Network Monitoring</label>
