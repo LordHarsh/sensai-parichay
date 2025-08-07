@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { useCourses, useSchools, Course as ApiCourse } from "@/lib/api";
 import CourseCard from "@/components/CourseCard";
 import CreateCourseDialog from "@/components/CreateCourseDialog";
+import Link from "next/link";
 
 export default function Home() {
   const router = useRouter();
@@ -170,6 +171,12 @@ export default function Home() {
                       >
                         Create course
                       </button>
+                      <Link
+                        href="/exam"
+                        className="px-6 py-3 bg-blue-600 text-white text-sm font-medium rounded-full hover:bg-blue-700 transition-colors inline-block"
+                      >
+                        Try Exam System
+                      </Link>
                     </div>
                   </div>
                 ) : !(hasLearningCourses && hasTeachingCourses) && (

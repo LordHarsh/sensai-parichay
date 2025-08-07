@@ -21,6 +21,8 @@ from api.routes import (
     file,
     ai,
     scorecard,
+    exam,
+    exams,
 )
 from api.routes.ai import (
     resume_pending_task_generation_jobs,
@@ -116,6 +118,8 @@ app.include_router(milestone.router, prefix="/milestones", tags=["milestones"])
 app.include_router(scorecard.router, prefix="/scorecards", tags=["scorecards"])
 app.include_router(code.router, prefix="/code", tags=["code"])
 app.include_router(hva.router, prefix="/hva", tags=["hva"])
+app.include_router(exam.router, prefix="/api", tags=["exam"])
+app.include_router(exams.router, tags=["exams"])
 app.include_router(websocket_router, prefix="/ws", tags=["websockets"])
 
 

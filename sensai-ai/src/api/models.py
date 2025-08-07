@@ -705,3 +705,90 @@ class SaveCodeDraftRequest(BaseModel):
 class CodeDraft(BaseModel):
     id: int
     code: List[LanguageCodeDraft]
+
+
+# Exam Models
+class ExamQuestionOption(BaseModel):
+    id: str
+    text: str
+    is_correct: bool = False
+
+
+class ExamQuestion(BaseModel):
+    id: str
+    type: Literal["multiple_choice", "text", "code", "essay"]
+    question: str
+    options: Optional[List[ExamQuestionOption]] = None
+    correct_answer: Optional[str] = None
+    points: int = 1
+    time_limit: Optional[int] = None
+    metadata: Optional[Dict] = None
+
+
+class ExamConfiguration(BaseModel):
+    id: str
+    title: str
+    description: str
+    duration: int  # minutes
+    questions: List[ExamQuestion]
+    settings: Dict
+    monitoring: Dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExamEvent(BaseModel):
+    type: str
+    timestamp: int
+    data: Dict
+
+
+class ExamSession(BaseModel):
+    id: str
+    exam_id: str
+    user_id: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    status: Literal["pending", "active", "completed", "terminated"]
+    answers: Dict[str, str] = {}
+    events: List[ExamEvent] = []
+    video_file_path: Optional[str] = None
+    score: Optional[float] = None
+    metadata: Optional[Dict] = None
+
+
+class CreateExamRequest(BaseModel):
+    title: str
+    description: str
+    duration: int
+    questions: List[ExamQuestion]
+    settings: Dict = {}
+    monitoring: Dict = {}
+
+
+class ExamSubmissionRequest(BaseModel):
+    answers: Dict[str, str]
+    time_taken: int
+
+
+class ExamEventMessage(BaseModel):
+    type: Literal["exam_event"]
+    event: ExamEvent
+
+
+class VideoDataMessage(BaseModel):
+    type: Literal["video_chunk"]
+    timestamp: int
+    data: str  # base64 encoded
+    is_final: Optional[bool] = False
+    size: Optional[int] = 0
+
+
+class VideoControlMessage(BaseModel):
+    type: Literal["video_start", "video_stop"]
+    timestamp: int
+
+
+class WebSocketMessage(BaseModel):
+    type: str
+    data: Optional[Dict] = None
