@@ -18,7 +18,9 @@ from api.models import (
     ExamSession,
     ExamQuestion,
     ExamTimelineEvent,
-    ExamAnalytics
+    ExamAnalytics,
+    ExamEvaluationRequest,
+    ExamEvaluationReport
 )
 from api.utils.db import get_new_db_connection
 from api.config import (
@@ -389,6 +391,285 @@ async def get_exam_results(exam_id: str, session_id: str):
     except Exception as e:
         print(f"Error fetching exam results: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch exam results")
+
+
+@router.post("/{exam_id}/evaluate/{session_id}", response_model=dict)
+async def evaluate_exam_comprehensive(
+    exam_id: str, 
+    session_id: str, 
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate comprehensive AI-powered evaluation of exam performance
+    """
+    try:
+        from api.llm import evaluate_exam_with_openai
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        # Log API key status (without revealing the key)
+        print(f"OpenAI API key loaded: {'Yes' if openai_api_key else 'No'}")
+        print(f"API key length: {len(openai_api_key) if openai_api_key else 0}")
+        print(f"API key starts with 'sk-': {openai_api_key.startswith('sk-') if openai_api_key else False}")
+        
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Get comprehensive exam session data
+            await cursor.execute(
+                f"""SELECT s.*, e.title, e.description, e.duration, e.questions, u.email, u.first_name, u.last_name
+                    FROM {exam_sessions_table_name} s
+                    JOIN {exams_table_name} e ON s.exam_id = e.id
+                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    WHERE s.id = ? AND s.exam_id = ?""",
+                (session_id, exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            # Calculate time taken in seconds
+            start_time = session_row[3] if session_row[3] else datetime.now()
+            end_time = session_row[4] if session_row[4] else datetime.now()
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
+            
+            time_taken_seconds = (end_time - start_time).total_seconds()
+            
+            # Parse exam data
+            print("Parsing exam data...")
+            questions = json.loads(session_row[12])  # e.questions
+            print(f"Found {len(questions)} questions in exam")
+            answers = json.loads(session_row[6] or "{}")  # s.answers
+            
+            # Create user display name
+            user_display = "Student"
+            if session_row[15]:  # email
+                if session_row[16] and session_row[17]:  # first_name and last_name
+                    user_display = f"{session_row[16]} {session_row[17]}"
+                elif session_row[16]:  # only first_name
+                    user_display = session_row[16]
+                else:
+                    user_display = session_row[15]  # fallback to email
+            
+            # Prepare questions and answers for analysis
+            questions_and_answers = []
+            for i, question in enumerate(questions, 1):
+                question_id = question.get('id', f'q{i}')
+                user_answer = answers.get(question_id, '')
+                correct_answer = question.get('correct_answer', '')
+                
+                # Determine if answer is correct
+                is_correct = False
+                if question.get('type') == 'multiple_choice':
+                    is_correct = user_answer == correct_answer
+                elif question.get('type') == 'text':
+                    # Simple text comparison - could be enhanced with fuzzy matching
+                    is_correct = user_answer.strip().lower() == correct_answer.lower() if correct_answer else bool(user_answer.strip())
+                else:
+                    # For essay/code questions, mark as answered if there's content
+                    is_correct = bool(user_answer.strip()) if user_answer else False
+                
+                questions_and_answers.append({
+                    "question_number": i,
+                    "question_id": question_id,
+                    "question_type": question.get('type', 'text'),
+                    "question_text": question.get('question', ''),
+                    "options": question.get('options', []),
+                    "correct_answer": correct_answer,
+                    "user_answer": user_answer,
+                    "is_correct": is_correct,
+                    "points": question.get('points', 1),
+                    "metadata": question.get('metadata', {})
+                })
+            
+            # Prepare evaluation context
+            evaluation_context = {
+                "session_id": session_id,
+                "exam_title": session_row[11],  # e.title
+                "exam_description": session_row[12] if len(session_row) > 12 else "",  # e.description
+                "duration": session_row[13],  # e.duration in minutes
+                "time_taken": time_taken_seconds,  # in seconds
+                "score": session_row[7] or 0,  # s.score
+                "user_name": user_display,
+                "questions": questions,
+                "questions_and_answers": questions_and_answers
+            }
+            
+            # Debug logging
+            print(f"Evaluation context prepared:")
+            print(f"- Exam title: {evaluation_context['exam_title']}")
+            print(f"- Questions count: {len(evaluation_context['questions'])}")
+            print(f"- Q&A count: {len(evaluation_context['questions_and_answers'])}")
+            print(f"- Score: {evaluation_context['score']}")
+            print(f"- Time taken: {evaluation_context['time_taken']} seconds")
+            
+            # Generate comprehensive evaluation using OpenAI
+            try:
+                evaluation_result = await evaluate_exam_with_openai(
+                    api_key=openai_api_key,
+                    exam_context=evaluation_context,
+                    model="gpt-4o"
+                )
+            except Exception as llm_error:
+                print(f"LLM evaluation failed: {str(llm_error)}")
+                # Provide a basic fallback evaluation
+                total_questions = len(questions_and_answers)
+                correct_answers = sum(1 for qa in questions_and_answers if qa.get('is_correct', False))
+                accuracy = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+                
+                evaluation_result = {
+                    "overall_summary": {
+                        "performance_level": "Good" if accuracy >= 70 else "Average" if accuracy >= 50 else "Below Average",
+                        "key_strengths": ["Basic completion"] if correct_answers > 0 else [],
+                        "key_weaknesses": ["Needs improvement"] if accuracy < 70 else [],
+                        "time_management": f"Completed in {time_taken_seconds/60:.1f} minutes",
+                        "overall_feedback": f"You scored {accuracy:.1f}% on this exam. {'Good work!' if accuracy >= 70 else 'Keep practicing to improve your performance.'}"
+                    },
+                    "question_by_question_analysis": [
+                        {
+                            "question_number": i+1,
+                            "status": "correct" if qa.get('is_correct', False) else "incorrect",
+                            "detailed_feedback": f"Question {i+1}: {'Correct answer!' if qa.get('is_correct', False) else 'Review this topic'}",
+                            "why_wrong": "" if qa.get('is_correct', False) else "Incorrect response provided",
+                            "better_approach": "Review course materials",
+                            "related_concepts": ["General knowledge"],
+                            "difficulty_level": "Medium"
+                        }
+                        for i, qa in enumerate(questions_and_answers)
+                    ],
+                    "knowledge_gaps": [
+                        {
+                            "topic": "General understanding",
+                            "severity": "Medium",
+                            "description": "Some concepts need reinforcement",
+                            "improvement_suggestions": "Review course materials and practice more"
+                        }
+                    ],
+                    "learning_recommendations": {
+                        "immediate_actions": ["Review incorrect answers", "Study course materials"],
+                        "study_plan": {
+                            "week_1": ["Review basics"],
+                            "week_2": ["Practice exercises"],
+                            "week_3": ["Advanced topics"],
+                            "week_4": ["Mock exams"]
+                        },
+                        "external_resources": [
+                            {
+                                "type": "Study Guide",
+                                "title": "Course Review Materials",
+                                "url": "#",
+                                "description": "Review your course materials"
+                            }
+                        ],
+                        "practice_suggestions": ["Take practice quizzes", "Review notes"]
+                    },
+                    "comparative_analysis": {
+                        "grade_interpretation": f"Score of {accuracy:.1f}%",
+                        "improvement_potential": "Good potential with focused study",
+                        "benchmark_comparison": "Compare with class average",
+                        "next_level_requirements": "Consistent practice needed"
+                    },
+                    "visual_insights": {
+                        "strength_areas": [{"topic": "Completion", "score": accuracy}],
+                        "improvement_areas": [{"topic": "Accuracy", "priority": "High" if accuracy < 50 else "Medium"}],
+                        "time_distribution": {
+                            "estimated_per_question": {},
+                            "efficiency_rating": "Average"
+                        }
+                    },
+                    "teacher_insights": {
+                        "teaching_recommendations": ["Focus on weak areas"],
+                        "classroom_interventions": ["Additional practice sessions"],
+                        "peer_collaboration": "Study groups recommended",
+                        "assessment_modifications": "Consider review sessions"
+                    },
+                    "evaluation_metadata": {
+                        "model_used": "fallback_evaluation",
+                        "evaluation_timestamp": datetime.now().isoformat(),
+                        "note": "This is a basic evaluation due to AI service unavailability"
+                    }
+                }
+                print("Using fallback evaluation due to LLM failure")
+            
+            
+            # Store evaluation result in database for future reference
+            evaluation_json = json.dumps(evaluation_result)
+            await cursor.execute(
+                f"""UPDATE {exam_sessions_table_name} 
+                    SET metadata = ? 
+                    WHERE id = ?""",
+                (evaluation_json, session_id)
+            )
+            await conn.commit()
+            
+            return {
+                "success": True,
+                "session_id": session_id,
+                "evaluation": evaluation_result,
+                "summary": {
+                    "exam_title": evaluation_context["exam_title"],
+                    "student": evaluation_context["user_name"],
+                    "score": evaluation_context["score"],
+                    "performance_level": evaluation_result.get("overall_summary", {}).get("performance_level", "Unknown"),
+                    "evaluation_generated_at": datetime.now().isoformat()
+                }
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating exam evaluation: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate evaluation: {str(e)}")
+
+
+@router.get("/{exam_id}/evaluation/{session_id}", response_model=dict)
+async def get_stored_evaluation(exam_id: str, session_id: str):
+    """
+    Retrieve previously generated evaluation from database
+    """
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            await cursor.execute(
+                f"""SELECT metadata, score FROM {exam_sessions_table_name} 
+                    WHERE id = ? AND exam_id = ?""",
+                (session_id, exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            metadata = session_row[0]
+            if not metadata:
+                raise HTTPException(status_code=404, detail="No evaluation found. Generate evaluation first.")
+            
+            try:
+                evaluation = json.loads(metadata)
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "evaluation": evaluation,
+                    "score": session_row[1]
+                }
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail="Invalid evaluation data format")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching stored evaluation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch evaluation")
 
 
 @router.get("/{exam_id}/analytics/{session_id}", response_model=ExamAnalytics)

@@ -850,3 +850,101 @@ class ValidateFaceResponse(BaseModel):
     success: bool
     result: Optional[FaceValidationResult] = None
     error: Optional[str] = None
+
+
+# Exam Evaluation Models
+class ExamEvaluationRequest(BaseModel):
+    session_id: str
+    exam_id: str
+    user_name: str
+
+
+class QuestionAnalysis(BaseModel):
+    question_number: int
+    status: Literal["correct", "incorrect", "partial"]
+    detailed_feedback: str
+    why_wrong: Optional[str] = None
+    better_approach: Optional[str] = None
+    related_concepts: List[str]
+    difficulty_level: Literal["Easy", "Medium", "Hard"]
+
+
+class KnowledgeGap(BaseModel):
+    topic: str
+    severity: Literal["High", "Medium", "Low"]
+    description: str
+    improvement_suggestions: str
+
+
+class ExternalResource(BaseModel):
+    type: str
+    title: str
+    url: str
+    description: str
+
+
+class StudyPlan(BaseModel):
+    week_1: List[str]
+    week_2: List[str]
+    week_3: List[str]
+    week_4: List[str]
+
+
+class LearningRecommendations(BaseModel):
+    immediate_actions: List[str]
+    study_plan: StudyPlan
+    external_resources: List[ExternalResource]
+    practice_suggestions: List[str]
+
+
+class OverallSummary(BaseModel):
+    performance_level: Literal["Excellent", "Good", "Average", "Below Average", "Poor"]
+    key_strengths: List[str]
+    key_weaknesses: List[str]
+    time_management: str
+    overall_feedback: str
+
+
+class ComparativeAnalysis(BaseModel):
+    grade_interpretation: str
+    improvement_potential: str
+    benchmark_comparison: str
+    next_level_requirements: str
+
+
+class StrengthArea(BaseModel):
+    topic: str
+    score: float
+
+
+class ImprovementArea(BaseModel):
+    topic: str
+    priority: Literal["High", "Medium", "Low"]
+
+
+class TimeDistribution(BaseModel):
+    estimated_per_question: Dict[str, float]
+    efficiency_rating: Literal["Excellent", "Good", "Average", "Poor"]
+
+
+class VisualInsights(BaseModel):
+    strength_areas: List[StrengthArea]
+    improvement_areas: List[ImprovementArea]
+    time_distribution: TimeDistribution
+
+
+class TeacherInsights(BaseModel):
+    teaching_recommendations: List[str]
+    classroom_interventions: List[str]
+    peer_collaboration: str
+    assessment_modifications: str
+
+
+class ExamEvaluationReport(BaseModel):
+    overall_summary: OverallSummary
+    question_by_question_analysis: List[QuestionAnalysis]
+    knowledge_gaps: List[KnowledgeGap]
+    learning_recommendations: LearningRecommendations
+    comparative_analysis: ComparativeAnalysis
+    visual_insights: VisualInsights
+    teacher_insights: TeacherInsights

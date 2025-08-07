@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import AnswerAnalytics from "@/components/exam/AnswerAnalytics";
 import EventReplay from "@/components/exam/EventReplay";
+import SimpleExamEvaluation from '@/components/exam/SimpleEvaluation';
+import ProfessionalExamReport from '@/components/exam/ProfessionalReport';
 
 interface ExamResults {
   session_id: string;
@@ -311,6 +313,17 @@ export default function ExamResultsPage() {
             </div>
           </div>
         )}
+
+        {/* Professional AI Evaluation Report */}
+        <div className="mb-8">
+          <ProfessionalExamReport
+            examId={examId as string}
+            sessionId={sessionId as string}
+            userSession={session}
+            examTitle={results.exam_title}
+            score={results.score}
+          />
+        </div>
 
         {/* Advanced Analytics Tabs (for teachers) */}
         {analytics && (
