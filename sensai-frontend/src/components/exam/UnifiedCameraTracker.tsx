@@ -171,34 +171,37 @@ const UnifiedCameraTracker: React.FC<UnifiedCameraTrackerProps> = ({ websocket, 
     // GAZE TRACKING (if enabled) - include calibration logic here
     if (gazeEnabled) {
       const gazePos = calculateGazePosition(landmarks); // This handles calibration internally
-      if (gazePos && gazeIsCalibrated) { // Only do gaze tracking after calibration
+      if (gazePos) { // Always process gaze position (calibration happens inside calculateGazePosition)
         setGazePosition(gazePos);
 
-        const isOutsideScreen = 
-          gazePos.x < GAZE_SCREEN_MARGIN || 
-          gazePos.x > window.innerWidth - GAZE_SCREEN_MARGIN ||
-          gazePos.y < GAZE_SCREEN_MARGIN || 
-          gazePos.y > window.innerHeight - GAZE_SCREEN_MARGIN;
+        // Only do violation tracking after calibration is complete
+        if (gazeIsCalibrated) {
+          const isOutsideScreen = 
+            gazePos.x < GAZE_SCREEN_MARGIN || 
+            gazePos.x > window.innerWidth - GAZE_SCREEN_MARGIN ||
+            gazePos.y < GAZE_SCREEN_MARGIN || 
+            gazePos.y > window.innerHeight - GAZE_SCREEN_MARGIN;
 
-        if (isOutsideScreen) {
-          if (!gazeAwayStartTime.current) {
-            gazeAwayStartTime.current = now;
-          } else {
-            const awayDuration = now - gazeAwayStartTime.current;
-            
-            if (awayDuration > GAZE_AWAY_THRESHOLD && !gazeIsLookingAway) {
-              setGazeIsLookingAway(true);
-              logGazeEvent(gazePos, now, true);
-              console.log('🔍 Unified: Gaze away detected');
+          if (isOutsideScreen) {
+            if (!gazeAwayStartTime.current) {
+              gazeAwayStartTime.current = now;
+            } else {
+              const awayDuration = now - gazeAwayStartTime.current;
+              
+              if (awayDuration > GAZE_AWAY_THRESHOLD && !gazeIsLookingAway) {
+                setGazeIsLookingAway(true);
+                logGazeEvent(gazePos, now, true);
+                console.log('🔍 Unified: Gaze away detected');
+              }
             }
-          }
-        } else {
-          if (gazeAwayStartTime.current && gazeIsLookingAway) {
-            const awayDuration = now - gazeAwayStartTime.current;
-            setGazeIsLookingAway(false);
-            logGazeEvent(gazePos, now, false);
-            console.log(`✅ Unified: Gaze returned (was away ${Math.round(awayDuration / 1000)}s)`);
-            gazeAwayStartTime.current = null;
+          } else {
+            if (gazeAwayStartTime.current && gazeIsLookingAway) {
+              const awayDuration = now - gazeAwayStartTime.current;
+              setGazeIsLookingAway(false);
+              logGazeEvent(gazePos, now, false);
+              console.log(`✅ Unified: Gaze returned (was away ${Math.round(awayDuration / 1000)}s)`);
+              gazeAwayStartTime.current = null;
+            }
           }
         }
       }
