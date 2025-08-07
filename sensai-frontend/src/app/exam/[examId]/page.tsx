@@ -8,6 +8,7 @@ import ExamHeader from "@/components/exam/ExamHeader";
 import QuestionPanel from "@/components/exam/QuestionPanel";
 import VideoRecorder from "@/components/exam/VideoRecorder";
 import EventTracker from "@/components/exam/EventTracker";
+import MediaPipeGazeTracker from "@/components/exam/MediaPipeGazeTracker";
 import ExamNotification from "@/components/exam/ExamNotification";
 import { ExamWebSocket } from "@/lib/exam-websocket";
 import { ExamQuestion, ExamEvent, ExamNotification as NotificationType } from "@/types/exam";
@@ -419,11 +420,17 @@ export default function ExamPage() {
       </div>
       
       {examStarted && !examEnded && (
-        <EventTracker
-          ref={eventTrackerRef}
-          websocket={wsRef.current}
-          examId={examId as string}
-        />
+        <>
+          <EventTracker
+            ref={eventTrackerRef}
+            websocket={wsRef.current}
+            examId={examId as string}
+          />
+          <MediaPipeGazeTracker
+            websocket={wsRef.current}
+            enabled={examData?.monitoring?.gaze_tracking || false}
+          />
+        </>
       )}
       
       {notifications.map(notification => (

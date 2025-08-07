@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(uvicorn:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(mv:*)",
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:kh-monib.medium.com)"
+    ],
+    "deny": []
+  }
+}

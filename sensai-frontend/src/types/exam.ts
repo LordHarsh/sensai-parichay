@@ -158,6 +158,21 @@ export interface ScreenResolutionEvent extends ExamEvent {
   };
 }
 
+export interface GazeTrackingEvent extends ExamEvent {
+  type: "gaze_tracking";
+  data: {
+    gaze_x: number;
+    gaze_y: number;
+    screen_x: number;
+    screen_y: number;
+    looking_away: boolean;
+    confidence: number;
+    timestamp: number;
+    violation_type?: string;
+    duration_away?: number;
+  };
+}
+
 export interface ExamNotification {
   id: string;
   message: string;
@@ -232,4 +247,5 @@ export type ExamEventType =
   | FaceDetectionEvent
   | NetworkActivityEvent
   | WindowFocusEvent
-  | ScreenResolutionEvent;
+  | ScreenResolutionEvent
+  | GazeTrackingEvent;

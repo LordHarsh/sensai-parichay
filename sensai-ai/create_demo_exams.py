@@ -90,7 +90,7 @@ async def create_demo_exams():
             "keystroke_logging": True,
             "mouse_tracking": True,
             "face_detection": True,
-            "gaze_tracking": False,
+            "gaze_tracking": True,
             "network_monitoring": True
         }
     }
@@ -174,7 +174,7 @@ async def create_demo_exams():
             "keystroke_logging": False,
             "mouse_tracking": False,
             "face_detection": True,
-            "gaze_tracking": False,
+            "gaze_tracking": True,
             "network_monitoring": False
         }
     }

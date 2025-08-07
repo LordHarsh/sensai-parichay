@@ -1,0 +1,378 @@
+import { useEffect, useRef, useState, useCallback } from "react";
+import { ExamWebSocket } from "@/lib/exam-websocket";
+import { GazeTrackingEvent } from "@/types/exam";
+
+// Import WebGazer dynamically to avoid SSR issues
+let webgazer: any = null;
+
+interface GazeTrackerProps {
+  websocket: ExamWebSocket | null;
+  enabled: boolean;
+}
+
+interface WebGazerAPI {
+  setRegression: (type: string) => WebGazerAPI;
+  setTracker: (type: string) => WebGazerAPI;
+  setGazeListener: (callback: (data: { x: number; y: number } | null, timestamp: number) => void) => WebGazerAPI;
+  begin: () => Promise<WebGazerAPI>;
+  end: () => void;
+  showVideoPreview: (show: boolean) => void;
+  showPredictionPoints: (show: boolean) => void;
+  showFaceOverlay: (show: boolean) => void;
+  showFaceFeedbackBox: (show: boolean) => void;
+  recordScreenPosition: (x: number, y: number, eventType: string) => void;
+  getConfidence?: () => number;
+}
+
+declare global {
+  interface Window {
+    webgazer: WebGazerAPI;
+  }
+}
+
+const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [isLookingAway, setIsLookingAway] = useState(false);
+  const [gazePosition, setGazePosition] = useState<{ x: number; y: number } | null>(null);
+  const [awayDuration, setAwayDuration] = useState<number>(0);
+
+  const lastGazeTime = useRef<number>(Date.now());
+  const gazeAwayStartTime = useRef<number | null>(null);
+  const cheatingWarningLogged = useRef<boolean>(false);
+  const isCalibrating = useRef(false);
+  const initializationAttempted = useRef<boolean>(false);
+
+  // Screen boundaries for determining if looking away
+  const SCREEN_MARGIN = 50; // pixels from edge to consider "looking away"
+  const GAZE_AWAY_THRESHOLD = 1000; // ms before considering "looking away"
+  const CHEATING_THRESHOLD = 10000; // 10 seconds in ms
+  const TRACKING_INTERVAL = 500; // ms between gaze tracking events
+
+  const logGazeEvent = useCallback((gazeData: { x: number; y: number }, timestamp: number, lookingAway: boolean) => {
+    if (!websocket?.isConnected()) return;
+
+    // Get the confidence from WebGazer (if available)
+    const confidence = window.webgazer?.getConfidence?.() || 0.5;
+
+    const event: GazeTrackingEvent = {
+      type: 'gaze_tracking',
+      timestamp,
+      data: {
+        gaze_x: Math.round(gazeData.x),
+        gaze_y: Math.round(gazeData.y),
+        screen_x: window.innerWidth,
+        screen_y: window.innerHeight,
+        looking_away: lookingAway,
+        confidence,
+        timestamp
+      }
+    };
+
+    websocket.sendEvent(event);
+
+    // Extra logging for looking away events
+    if (lookingAway) {
+      console.log(`📊 Gaze Event: Looking away detected at (${event.data.gaze_x}, ${event.data.gaze_y}) with confidence ${confidence.toFixed(2)}`);
+    }
+  }, [websocket]);
+
+  const handleGazeData = useCallback((data: { x: number; y: number } | null) => {
+    if (!data || !isInitialized) return;
+
+    const now = Date.now();
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    // Update gaze position
+    setGazePosition({ x: data.x, y: data.y });
+
+    // Check if looking away from screen
+    const isOutsideScreen = 
+      data.x < SCREEN_MARGIN || 
+      data.x > screenWidth - SCREEN_MARGIN ||
+      data.y < SCREEN_MARGIN || 
+      data.y > screenHeight - SCREEN_MARGIN;
+
+    // Handle looking away detection
+    if (isOutsideScreen) {
+      if (!gazeAwayStartTime.current) {
+        gazeAwayStartTime.current = now;
+        cheatingWarningLogged.current = false; // Reset cheating warning flag
+      } else {
+        const awayDuration = now - gazeAwayStartTime.current;
+        
+        // First threshold: Start tracking as "looking away"
+        if (awayDuration > GAZE_AWAY_THRESHOLD && !isLookingAway) {
+          setIsLookingAway(true);
+          logGazeEvent(data, now, true);
+          console.log('🔍 Exam taker is looking away from screen');
+        }
+        
+        // Second threshold: 10-second cheating detection
+        if (awayDuration > CHEATING_THRESHOLD && !cheatingWarningLogged.current) {
+          cheatingWarningLogged.current = true;
+          console.log('---MIGHT BE CHEATING---');
+          console.log(`🚨 ALERT: Exam taker has been looking away for ${Math.round(awayDuration / 1000)} seconds`);
+          
+          // Log serious gaze violation event
+          const cheatingEvent: GazeTrackingEvent = {
+            type: 'gaze_tracking',
+            timestamp: now,
+            data: {
+              gaze_x: Math.round(data.x),
+              gaze_y: Math.round(data.y),
+              screen_x: window.innerWidth,
+              screen_y: window.innerHeight,
+              looking_away: true,
+              confidence: window.webgazer?.getConfidence?.() || 0.5,
+              timestamp: now,
+              violation_type: 'extended_gaze_away',
+              duration_away: awayDuration
+            }
+          };
+          
+          if (websocket?.isConnected()) {
+            websocket.sendEvent(cheatingEvent);
+          }
+        }
+      }
+    } else {
+      if (gazeAwayStartTime.current) {
+        const awayDuration = now - gazeAwayStartTime.current;
+        
+        if (isLookingAway) {
+          setIsLookingAway(false);
+          logGazeEvent(data, now, false);
+          console.log(`✅ Exam taker is looking back at screen (was away for ${Math.round(awayDuration / 1000)}s)`);
+        }
+        
+        // Reset tracking variables
+        gazeAwayStartTime.current = null;
+        cheatingWarningLogged.current = false;
+      }
+    }
+
+    // Log periodic gaze tracking events
+    if (now - lastGazeTime.current > TRACKING_INTERVAL) {
+      logGazeEvent(data, now, isOutsideScreen);
+      lastGazeTime.current = now;
+    }
+  }, [isInitialized, isLookingAway, logGazeEvent, SCREEN_MARGIN, GAZE_AWAY_THRESHOLD, TRACKING_INTERVAL]);
+
+  const startAutoCalibration = useCallback(() => {
+    if (isCalibrating.current || isCalibrated) return;
+
+    isCalibrating.current = true;
+    console.log('Starting automatic calibration...');
+
+    // Define calibration points (corners and center)
+    const points = [
+      { x: window.innerWidth * 0.1, y: window.innerHeight * 0.1 },   // Top-left
+      { x: window.innerWidth * 0.9, y: window.innerHeight * 0.1 },   // Top-right
+      { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 },   // Center
+      { x: window.innerWidth * 0.1, y: window.innerHeight * 0.9 },   // Bottom-left
+      { x: window.innerWidth * 0.9, y: window.innerHeight * 0.9 },   // Bottom-right
+    ];
+
+    let currentPoint = 0;
+
+    const calibrateNextPoint = () => {
+      if (currentPoint >= points.length) {
+        console.log('Auto-calibration completed');
+        setIsCalibrated(true);
+        isCalibrating.current = false;
+        return;
+      }
+
+      const point = points[currentPoint];
+      
+      // Simulate click at calibration point
+      if (window.webgazer) {
+        window.webgazer.recordScreenPosition(point.x, point.y, 'click');
+        console.log(`Calibrating point ${currentPoint + 1}/${points.length}: (${Math.round(point.x)}, ${Math.round(point.y)})`);
+      }
+
+      currentPoint++;
+      setTimeout(calibrateNextPoint, 1000); // Wait 1 second between points
+    };
+
+    calibrateNextPoint();
+  }, [isCalibrated]);
+
+  const initializeWebGazer = useCallback(async () => {
+    if (!window.webgazer) return;
+    
+    // Prevent multiple initializations
+    if (isInitialized || initializationAttempted.current) return;
+    
+    initializationAttempted.current = true;
+
+    try {
+      console.log('Initializing WebGazer...');
+      
+      // Initialize WebGazer with ridge regression and TFFacemesh tracker
+      await window.webgazer
+        .setRegression('ridge')
+        .setTracker('TFFacemesh')
+        .setGazeListener(handleGazeData)
+        .begin();
+
+      // Hide the default video preview
+      window.webgazer.showVideoPreview(false);
+      window.webgazer.showPredictionPoints(false);
+      window.webgazer.showFaceOverlay(false);
+      window.webgazer.showFaceFeedbackBox(false);
+
+      setIsInitialized(true);
+      console.log('WebGazer initialized successfully');
+
+      // Start auto-calibration after a delay
+      setTimeout(() => {
+        if (!isCalibrated) {
+          startAutoCalibration();
+        }
+      }, 2000);
+
+    } catch (error) {
+      console.error('Failed to initialize WebGazer:', error);
+    }
+  }, [handleGazeData, isInitialized, isCalibrated, startAutoCalibration]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const loadWebGazer = async () => {
+      try {
+        if (!webgazer && typeof window !== 'undefined') {
+          // Try to import the npm package
+          try {
+            const WebGazerModule = await import('webgazer');
+            webgazer = WebGazerModule.default || WebGazerModule;
+            window.webgazer = webgazer;
+            console.log('[GazeTracker] WebGazer loaded from npm package');
+            initializeWebGazer();
+          } catch (importError) {
+            console.log('[GazeTracker] Loading WebGazer from CDN...');
+            
+            // Fallback to CDN script loading
+            const script = document.createElement('script');
+            script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
+            script.onload = () => {
+              webgazer = window.webgazer;
+              initializeWebGazer();
+            };
+            script.onerror = () => {
+              console.error('[GazeTracker] Failed to load WebGazer from CDN');
+            };
+            document.head.appendChild(script);
+          }
+        } else if (window.webgazer) {
+          webgazer = window.webgazer;
+          initializeWebGazer();
+        }
+      } catch (error) {
+        console.error('[GazeTracker] Error loading WebGazer:', error);
+      }
+    };
+
+    loadWebGazer();
+
+    return () => {
+      // Don't cleanup WebGazer on every re-render, only when component is truly unmounted
+      // WebGazer should persist across re-renders for better performance
+    };
+  }, [enabled]);
+
+  // Update away duration in real-time
+  useEffect(() => {
+    if (!isLookingAway || !gazeAwayStartTime.current) {
+      setAwayDuration(0);
+      return;
+    }
+
+    const updateDuration = () => {
+      if (gazeAwayStartTime.current) {
+        setAwayDuration(Date.now() - gazeAwayStartTime.current);
+      }
+    };
+
+    const interval = setInterval(updateDuration, 100); // Update every 100ms
+    return () => clearInterval(interval);
+  }, [isLookingAway]);
+
+  // Render calibration status indicator
+  const renderStatusIndicator = () => {
+    if (!enabled) return null;
+
+    let status = 'Disabled';
+    let color = 'bg-gray-500';
+    let awayTimeDisplay = '';
+
+    // Status determination logic
+
+    if (isInitialized && isCalibrated) {
+      if (isLookingAway && awayDuration > 0) {
+        const awayTime = Math.round(awayDuration / 1000);
+        status = `Away (${awayTime}s)`;
+        color = awayTime >= 10 ? 'bg-red-600 animate-pulse' : 'bg-red-500';
+        if (awayTime >= 10) {
+          awayTimeDisplay = '⚠️ MIGHT BE CHEATING';
+        }
+      } else {
+        status = 'Tracking';
+        color = 'bg-green-500';
+      }
+    } else if (isInitialized && isCalibrating.current) {
+      status = 'Calibrating';
+      color = 'bg-yellow-500';
+    } else if (isInitialized && !isCalibrated) {
+      status = 'Ready to Calibrate';
+      color = 'bg-blue-500';
+    } else if (enabled && window.webgazer) {
+      status = 'Loading...';
+      color = 'bg-orange-500';
+    } else if (enabled) {
+      status = 'Starting...';
+      color = 'bg-purple-500';
+    }
+
+    return (
+      <div className="fixed top-20 right-4 z-50">
+        <div className={`px-3 py-1 rounded-full text-white text-xs font-medium ${color} shadow-lg`}>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isLookingAway ? 'animate-pulse' : ''} bg-white`}></div>
+            Gaze: {status}
+          </div>
+        </div>
+        {awayTimeDisplay && (
+          <div className="mt-1 text-xs text-red-600 bg-red-100 px-2 py-1 rounded shadow font-bold">
+            {awayTimeDisplay}
+          </div>
+        )}
+        {gazePosition && isInitialized && (
+          <div className="mt-1 text-xs text-gray-600 bg-white px-2 py-1 rounded shadow">
+            {Math.round(gazePosition.x)}, {Math.round(gazePosition.y)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {renderStatusIndicator()}
+      {/* WebGazer video preview - shown during calibration only */}
+      {isCalibrating.current && (
+        <div className="fixed top-4 left-4 z-50 bg-black bg-opacity-75 p-2 rounded-lg">
+          <div className="text-white text-xs mb-1">Calibrating gaze tracking...</div>
+          <div id="webgazer-video-preview"></div>
+        </div>
+      )}
+      {/* Hidden div to help with WebGazer initialization */}
+      <div id="webgazer-video-container" style={{ display: 'none' }}></div>
+    </>
+  );
+};
+
+export default GazeTracker;
