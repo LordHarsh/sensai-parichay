@@ -405,6 +405,8 @@ export default function ExamPage() {
               onQuestionChange={handleQuestionChange}
               onSubmitExam={endExam}
               isSubmitting={isSubmitting}
+              websocket={wsRef.current}
+              examId={examId as string}
             />
           )}
         </div>

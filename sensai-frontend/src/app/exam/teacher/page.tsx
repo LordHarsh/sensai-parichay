@@ -129,9 +129,6 @@ export default function TeacherDashboardPage() {
               <p className="text-gray-400">
                 Create and manage exams. Share exam links with students - anyone who isn't the creator can take the exam.
               </p>
-              <div className="mt-2 text-sm text-blue-400 bg-blue-900/20 px-3 py-2 rounded">
-                💡 Tip: Use the "Share" button to copy exam links and send them to students
-              </div>
             </div>
             <Link
               href="/exam/create"
