@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     slack_usage_stats_webhook_url: str | None = None
     phoenix_endpoint: str | None = None
     phoenix_api_key: str | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
 
     model_config = SettingsConfigDict(env_file=join(root_dir, ".env"))
 

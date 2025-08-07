@@ -792,3 +792,30 @@ class VideoControlMessage(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str
     data: Optional[Dict] = None
+class ValidateFaceRequest(BaseModel):
+    s3_path: str
+    split_direction: Optional[str] = "auto"  # "vertical", "horizontal", or "auto"
+
+
+class ImageHalfValidation(BaseModel):
+    labels_detected: List[str]
+    label_confidences: Dict[str, float]
+    faces_detected: int
+    best_face_confidence: Optional[float] = None
+    is_person_half: bool
+    is_id_half: bool
+
+
+class FaceValidationResult(BaseModel):
+    split_direction_used: str
+    person_half: ImageHalfValidation
+    id_half: ImageHalfValidation
+    faces_match: bool
+    match_confidence: Optional[float] = None
+    error_message: Optional[str] = None
+
+
+class ValidateFaceResponse(BaseModel):
+    success: bool
+    result: Optional[FaceValidationResult] = None
+    error: Optional[str] = None
