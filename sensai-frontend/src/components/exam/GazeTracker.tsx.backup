@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { ExamWebSocket } from "@/lib/exam-websocket";
 import { GazeTrackingEvent } from "@/types/exam";
 
+// Import WebGazer dynamically to avoid SSR issues
+let webgazer: any = null;
+
 interface GazeTrackerProps {
   websocket: ExamWebSocket | null;
   enabled: boolean;
@@ -32,13 +35,18 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [isLookingAway, setIsLookingAway] = useState(false);
   const [gazePosition, setGazePosition] = useState<{ x: number; y: number } | null>(null);
+  const [awayDuration, setAwayDuration] = useState<number>(0);
+
   const lastGazeTime = useRef<number>(Date.now());
   const gazeAwayStartTime = useRef<number | null>(null);
+  const cheatingWarningLogged = useRef<boolean>(false);
   const isCalibrating = useRef(false);
+  const initializationAttempted = useRef<boolean>(false);
 
   // Screen boundaries for determining if looking away
   const SCREEN_MARGIN = 50; // pixels from edge to consider "looking away"
   const GAZE_AWAY_THRESHOLD = 1000; // ms before considering "looking away"
+  const CHEATING_THRESHOLD = 10000; // 10 seconds in ms
   const TRACKING_INTERVAL = 500; // ms between gaze tracking events
 
   const logGazeEvent = useCallback((gazeData: { x: number; y: number }, timestamp: number, lookingAway: boolean) => {
@@ -90,19 +98,58 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
     if (isOutsideScreen) {
       if (!gazeAwayStartTime.current) {
         gazeAwayStartTime.current = now;
-      } else if (now - gazeAwayStartTime.current > GAZE_AWAY_THRESHOLD && !isLookingAway) {
-        setIsLookingAway(true);
-        logGazeEvent(data, now, true);
-        console.log('🔍 Exam taker is looking away from screen');
+        cheatingWarningLogged.current = false; // Reset cheating warning flag
+      } else {
+        const awayDuration = now - gazeAwayStartTime.current;
+        
+        // First threshold: Start tracking as "looking away"
+        if (awayDuration > GAZE_AWAY_THRESHOLD && !isLookingAway) {
+          setIsLookingAway(true);
+          logGazeEvent(data, now, true);
+          console.log('🔍 Exam taker is looking away from screen');
+        }
+        
+        // Second threshold: 10-second cheating detection
+        if (awayDuration > CHEATING_THRESHOLD && !cheatingWarningLogged.current) {
+          cheatingWarningLogged.current = true;
+          console.log('---MIGHT BE CHEATING---');
+          console.log(`🚨 ALERT: Exam taker has been looking away for ${Math.round(awayDuration / 1000)} seconds`);
+          
+          // Log serious gaze violation event
+          const cheatingEvent: GazeTrackingEvent = {
+            type: 'gaze_tracking',
+            timestamp: now,
+            data: {
+              gaze_x: Math.round(data.x),
+              gaze_y: Math.round(data.y),
+              screen_x: window.innerWidth,
+              screen_y: window.innerHeight,
+              looking_away: true,
+              confidence: window.webgazer?.getConfidence?.() || 0.5,
+              timestamp: now,
+              violation_type: 'extended_gaze_away',
+              duration_away: awayDuration
+            }
+          };
+          
+          if (websocket?.isConnected()) {
+            websocket.sendEvent(cheatingEvent);
+          }
+        }
       }
     } else {
       if (gazeAwayStartTime.current) {
+        const awayDuration = now - gazeAwayStartTime.current;
+        
         if (isLookingAway) {
           setIsLookingAway(false);
           logGazeEvent(data, now, false);
-          console.log('✅ Exam taker is looking back at screen');
+          console.log(`✅ Exam taker is looking back at screen (was away for ${Math.round(awayDuration / 1000)}s)`);
         }
+        
+        // Reset tracking variables
         gazeAwayStartTime.current = null;
+        cheatingWarningLogged.current = false;
       }
     }
 
@@ -154,15 +201,20 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
   }, [isCalibrated]);
 
   const initializeWebGazer = useCallback(async () => {
-    if (!window.webgazer || isInitialized) return;
+    if (!window.webgazer) return;
+    
+    // Prevent multiple initializations
+    if (isInitialized || initializationAttempted.current) return;
+    
+    initializationAttempted.current = true;
 
     try {
       console.log('Initializing WebGazer...');
       
-      // Initialize WebGazer with ridge regression
+      // Initialize WebGazer with ridge regression and TFFacemesh tracker
       await window.webgazer
         .setRegression('ridge')
-        .setTracker('clmtrackr')
+        .setTracker('TFFacemesh')
         .setGazeListener(handleGazeData)
         .begin();
 
@@ -175,37 +227,79 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
       setIsInitialized(true);
       console.log('WebGazer initialized successfully');
 
-      // Start auto-calibration
+      // Start auto-calibration after a delay
       setTimeout(() => {
-        startAutoCalibration();
+        if (!isCalibrated) {
+          startAutoCalibration();
+        }
       }, 2000);
 
     } catch (error) {
       console.error('Failed to initialize WebGazer:', error);
     }
-  }, [handleGazeData, isInitialized, startAutoCalibration]);
+  }, [handleGazeData, isInitialized, isCalibrated, startAutoCalibration]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    // Load WebGazer script if not already loaded
-    if (!window.webgazer) {
-      const script = document.createElement('script');
-      script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
-      script.onload = initializeWebGazer;
-      document.head.appendChild(script);
-    } else {
-      initializeWebGazer();
-    }
-
-    return () => {
-      if (window.webgazer && isInitialized) {
-        window.webgazer.end();
-        setIsInitialized(false);
-        setIsCalibrated(false);
+    const loadWebGazer = async () => {
+      try {
+        if (!webgazer && typeof window !== 'undefined') {
+          // Try to import the npm package
+          try {
+            const WebGazerModule = await import('webgazer');
+            webgazer = WebGazerModule.default || WebGazerModule;
+            window.webgazer = webgazer;
+            console.log('[GazeTracker] WebGazer loaded from npm package');
+            initializeWebGazer();
+          } catch (importError) {
+            console.log('[GazeTracker] Loading WebGazer from CDN...');
+            
+            // Fallback to CDN script loading
+            const script = document.createElement('script');
+            script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
+            script.onload = () => {
+              webgazer = window.webgazer;
+              initializeWebGazer();
+            };
+            script.onerror = () => {
+              console.error('[GazeTracker] Failed to load WebGazer from CDN');
+            };
+            document.head.appendChild(script);
+          }
+        } else if (window.webgazer) {
+          webgazer = window.webgazer;
+          initializeWebGazer();
+        }
+      } catch (error) {
+        console.error('[GazeTracker] Error loading WebGazer:', error);
       }
     };
-  }, [enabled, initializeWebGazer, isInitialized]);
+
+    loadWebGazer();
+
+    return () => {
+      // Don't cleanup WebGazer on every re-render, only when component is truly unmounted
+      // WebGazer should persist across re-renders for better performance
+    };
+  }, [enabled]);
+
+  // Update away duration in real-time
+  useEffect(() => {
+    if (!isLookingAway || !gazeAwayStartTime.current) {
+      setAwayDuration(0);
+      return;
+    }
+
+    const updateDuration = () => {
+      if (gazeAwayStartTime.current) {
+        setAwayDuration(Date.now() - gazeAwayStartTime.current);
+      }
+    };
+
+    const interval = setInterval(updateDuration, 100); // Update every 100ms
+    return () => clearInterval(interval);
+  }, [isLookingAway]);
 
   // Render calibration status indicator
   const renderStatusIndicator = () => {
@@ -213,16 +307,34 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
 
     let status = 'Disabled';
     let color = 'bg-gray-500';
+    let awayTimeDisplay = '';
+
+    // Status determination logic
 
     if (isInitialized && isCalibrated) {
-      status = isLookingAway ? 'Looking Away' : 'Tracking';
-      color = isLookingAway ? 'bg-red-500' : 'bg-green-500';
+      if (isLookingAway && awayDuration > 0) {
+        const awayTime = Math.round(awayDuration / 1000);
+        status = `Away (${awayTime}s)`;
+        color = awayTime >= 10 ? 'bg-red-600 animate-pulse' : 'bg-red-500';
+        if (awayTime >= 10) {
+          awayTimeDisplay = '⚠️ MIGHT BE CHEATING';
+        }
+      } else {
+        status = 'Tracking';
+        color = 'bg-green-500';
+      }
     } else if (isInitialized && isCalibrating.current) {
       status = 'Calibrating';
       color = 'bg-yellow-500';
-    } else if (isInitialized) {
-      status = 'Initializing';
+    } else if (isInitialized && !isCalibrated) {
+      status = 'Ready to Calibrate';
       color = 'bg-blue-500';
+    } else if (enabled && window.webgazer) {
+      status = 'Loading...';
+      color = 'bg-orange-500';
+    } else if (enabled) {
+      status = 'Starting...';
+      color = 'bg-purple-500';
     }
 
     return (
@@ -233,6 +345,11 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
             Gaze: {status}
           </div>
         </div>
+        {awayTimeDisplay && (
+          <div className="mt-1 text-xs text-red-600 bg-red-100 px-2 py-1 rounded shadow font-bold">
+            {awayTimeDisplay}
+          </div>
+        )}
         {gazePosition && isInitialized && (
           <div className="mt-1 text-xs text-gray-600 bg-white px-2 py-1 rounded shadow">
             {Math.round(gazePosition.x)}, {Math.round(gazePosition.y)}
@@ -245,6 +362,13 @@ const GazeTracker: React.FC<GazeTrackerProps> = ({ websocket, enabled }) => {
   return (
     <>
       {renderStatusIndicator()}
+      {/* WebGazer video preview - shown during calibration only */}
+      {isCalibrating.current && (
+        <div className="fixed top-4 left-4 z-50 bg-black bg-opacity-75 p-2 rounded-lg">
+          <div className="text-white text-xs mb-1">Calibrating gaze tracking...</div>
+          <div id="webgazer-video-preview"></div>
+        </div>
+      )}
       {/* Hidden div to help with WebGazer initialization */}
       <div id="webgazer-video-container" style={{ display: 'none' }}></div>
     </>

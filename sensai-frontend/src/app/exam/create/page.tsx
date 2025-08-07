@@ -78,7 +78,7 @@ export default function CreateExamPage() {
           keystroke_logging: true,
           mouse_tracking: true,
           face_detection: true,
-          gaze_tracking: false,
+          gaze_tracking: true,
           network_monitoring: true
         }
       };

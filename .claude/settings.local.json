@@ -9,7 +9,12 @@
       "Bash(uvicorn:*)",
       "Bash(curl:*)",
       "Bash(find:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(mv:*)",
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:kh-monib.medium.com)"
     ],
     "deny": []
   }

@@ -7,7 +7,7 @@ import ExamHeader from "@/components/exam/ExamHeader";
 import QuestionPanel from "@/components/exam/QuestionPanel";
 import VideoRecorder from "@/components/exam/VideoRecorder";
 import EventTracker from "@/components/exam/EventTracker";
-import GazeTracker from "@/components/exam/GazeTracker";
+import MediaPipeGazeTracker from "@/components/exam/MediaPipeGazeTracker";
 import ExamNotification from "@/components/exam/ExamNotification";
 import { ExamWebSocket } from "@/lib/exam-websocket";
 import { ExamQuestion, ExamEvent, ExamNotification as NotificationType } from "@/types/exam";
@@ -372,7 +372,7 @@ export default function ExamPage() {
             websocket={wsRef.current}
             examId={examId as string}
           />
-          <GazeTracker
+          <MediaPipeGazeTracker
             websocket={wsRef.current}
             enabled={examData?.monitoring?.gaze_tracking || false}
           />

@@ -162,6 +162,8 @@ export interface GazeTrackingEvent extends ExamEvent {
     looking_away: boolean;
     confidence: number;
     timestamp: number;
+    violation_type?: string;
+    duration_away?: number;
   };
 }
 
