@@ -47,6 +47,7 @@ from api.routes.ai import _generate_course_structure
 from api.models import GenerateCourseJobStatus
 from api.utils.event_scoring import EventScorer
 from api.utils.style_analyzer import analyze_exam_writing_style
+from api.utils.audio_analyzer import analyze_exam_audio_for_help
 from api.utils.logging import logger
 from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai, generate_surprise_viva_questions
 from api.config import (
@@ -559,9 +560,78 @@ async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: 
                     "error": f"Style analysis failed: {str(e)}"
                 }
             
+            # Perform audio analysis for background assistance detection
+            audio_analysis_result = None
+            try:
+                # Get video file path for this exam session
+                async with get_new_db_connection() as audio_conn:
+                    audio_cursor = await audio_conn.cursor()
+                    await audio_cursor.execute(
+                        f"SELECT video_file_path FROM {exam_sessions_table_name} WHERE id = ?",
+                        (existing_session_id,)
+                    )
+                    video_row = await audio_cursor.fetchone()
+                    
+                    if video_row and video_row[0]:
+                        video_path = video_row[0]
+                        logger.info(f"Starting audio analysis for session {existing_session_id}, video: {video_path}")
+                        
+                        audio_result = await analyze_exam_audio_for_help(video_path, exam_id)
+                        audio_analysis_result = {
+                            "has_background_help": audio_result.has_background_help,
+                            "confidence_score": audio_result.confidence_score,
+                            "suspicious_phrases": audio_result.suspicious_phrases,
+                            "analysis_summary": audio_result.analysis_summary,
+                            "speech_detected": audio_result.speech_detected,
+                            "multiple_speakers": audio_result.multiple_speakers
+                        }
+                        
+                        # Generate audio assistance event if background help detected
+                        if audio_result.has_background_help:
+                            event_data = {
+                                "exam_id": exam_id,
+                                "session_id": existing_session_id,
+                                "confidence_score": audio_result.confidence_score,
+                                "suspicious_phrases": audio_result.suspicious_phrases,
+                                "analysis_summary": audio_result.analysis_summary,
+                                "speech_detected": audio_result.speech_detected,
+                                "multiple_speakers": audio_result.multiple_speakers
+                            }
+                            
+                            # Store the audio assistance event
+                            async with get_new_db_connection() as audio_event_conn:
+                                audio_event_cursor = await audio_event_conn.cursor()
+                                await audio_event_cursor.execute(
+                                    f"""INSERT INTO {exam_events_table_name}
+                                        (id, session_id, event_type, event_data, timestamp, created_at)
+                                        VALUES (?, ?, ?, ?, ?, ?)""",
+                                    (
+                                        str(uuid.uuid4()),
+                                        existing_session_id,
+                                        "audio_assistance_detected",
+                                        json.dumps(event_data),
+                                        int(datetime.now().timestamp() * 1000),
+                                        datetime.now()
+                                    )
+                                )
+                                await audio_event_conn.commit()
+                                logger.info(f"Audio assistance event created for session {existing_session_id}")
+                    else:
+                        audio_analysis_result = {
+                            "analysis_summary": "No video file available for audio analysis"
+                        }
+                        
+            except Exception as e:
+                logger.error(f"Error in audio analysis: {e}")
+                audio_analysis_result = {
+                    "error": f"Audio analysis failed: {str(e)}"
+                }
+            
         response = {"message": "Exam submitted successfully", "score": score, "session_id": existing_session_id}
         if style_analysis_result:
             response["style_analysis"] = style_analysis_result
+        if audio_analysis_result:
+            response["audio_analysis"] = audio_analysis_result
             
         return response
         
