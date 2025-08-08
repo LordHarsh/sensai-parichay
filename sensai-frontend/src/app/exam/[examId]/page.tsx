@@ -10,6 +10,7 @@ import VideoRecorder from "@/components/exam/VideoRecorder";
 import EventTracker from "@/components/exam/EventTracker";
 import UnifiedCameraTracker from "@/components/exam/UnifiedCameraTracker";
 import ExamNotification from "@/components/exam/ExamNotification";
+import SurpriseVivaPopup from "@/components/exam/SurpriseVivaPopup";
 import { ExamWebSocket } from "@/lib/exam-websocket";
 import { ExamQuestion, ExamEvent, ExamNotification as NotificationType } from "@/types/exam";
 
@@ -31,6 +32,12 @@ export default function ExamPage() {
   const [examData, setExamData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  // Surprise Viva state
+  const [vivaActive, setVivaActive] = useState(false);
+  const [vivaQuestions, setVivaQuestions] = useState<any[]>([]);
+  const [vivaTimeLimit, setVivaTimeLimit] = useState(0);
+  const [vivaSessionId, setVivaSessionId] = useState<string>('');
   
   const wsRef = useRef<ExamWebSocket | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -116,6 +123,7 @@ export default function ExamPage() {
       wsRef.current = new ExamWebSocket(examId as string, userId, token);
       wsRef.current.onNotification = handleNotification;
       wsRef.current.onExamUpdate = handleExamUpdate;
+      wsRef.current.onSurpriseViva = handleSurpriseViva;
       wsRef.current.onSessionEstablished = (sessionId: string) => {
         console.log("Session established with ID:", sessionId);
         setSessionId(sessionId);
@@ -142,6 +150,23 @@ export default function ExamPage() {
         clearInterval(timerRef.current);
       }
     }
+  };
+
+  const handleSurpriseViva = (vivaData: { questions: any[], time_limit: number, session_id: string }) => {
+    console.log('🚨 Surprise viva triggered in handleSurpriseViva:', vivaData);
+    console.log('🔍 Questions received:', vivaData.questions);
+    console.log('⏰ Time limit:', vivaData.time_limit);
+    console.log('📝 Session ID:', vivaData.session_id);
+    
+    setVivaQuestions(vivaData.questions);
+    setVivaTimeLimit(vivaData.time_limit);
+    setVivaSessionId(vivaData.session_id);
+    setVivaActive(true);
+    
+    console.log('✅ Viva state updated - vivaActive should now be true');
+    
+    // Show notification that viva is starting
+    showNotification('Surprise viva questions have been triggered due to suspicious activity!', 'warning');
   };
 
   const startExam = async () => {
@@ -306,6 +331,49 @@ export default function ExamPage() {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
+  const handleVivaSubmit = async (answers: Record<string, string>) => {
+    try {
+      const userId = user?.id || session?.user?.id || session?.user?.email;
+      
+      const response = await fetch(`/api/surprise-viva/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
+        body: JSON.stringify({
+          session_id: sessionId, // Use the actual exam session ID, not vivaSessionId
+          answers: answers
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit viva answers');
+      }
+
+      const result = await response.json();
+      console.log('Viva submission result:', result);
+      
+      // Notify backend that viva is completed
+      wsRef.current?.sendVivaCompletion(sessionId || '');
+      
+      setVivaActive(false);
+      showNotification(`Viva completed! Score: ${result.score.toFixed(1)}/10`, 'success');
+      
+    } catch (error) {
+      console.error('Failed to submit viva:', error);
+      showNotification('Failed to submit viva answers. Please try again.', 'error');
+    }
+  };
+
+  const handleVivaClose = () => {
+    // Notify backend that viva was closed (but not necessarily completed)
+    wsRef.current?.sendVivaCompletion(sessionId || '');
+    
+    setVivaActive(false);
+    showNotification('Viva closed. Please continue with your exam.', 'info');
+  };
+
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -430,6 +498,19 @@ export default function ExamPage() {
           onRemove={removeNotification}
         />
       ))}
+      
+      {vivaActive && (
+        <>
+          {console.log('🎯 Rendering SurpriseVivaPopup:', { vivaActive, questionsCount: vivaQuestions?.length, timeLimit: vivaTimeLimit })}
+          <SurpriseVivaPopup
+            isOpen={vivaActive}
+            questions={vivaQuestions}
+            timeLimit={vivaTimeLimit}
+            onComplete={handleVivaSubmit}
+            onClose={handleVivaClose}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -934,7 +934,7 @@ export default function ExamResultsPage() {
           
           <button
             onClick={() => router.push('/exam')}
-            className="bg-white text-black hover:bg-gray-100 px-6 py-3 rounded-md font-medium transition-colors"
+            className="bg-white text-black hover:bg-gray-100 h-4 w-4 rounded-md font-medium transition-colors"
           >
             Return to Dashboard
           </button>

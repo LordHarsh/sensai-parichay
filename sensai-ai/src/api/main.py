@@ -24,6 +24,7 @@ from api.routes import (
     exam,
     exams,
     face,
+    viva,
 )
 from api.routes.simple_eval import simple_router
 from api.routes.ai import (
@@ -124,6 +125,7 @@ app.include_router(exam.router, prefix="/api", tags=["exam"])
 app.include_router(simple_router, prefix="/api", tags=["simple-eval"])
 app.include_router(exams.router, tags=["exams"])
 app.include_router(face.router, prefix="/face", tags=["face"])
+app.include_router(viva.router, prefix="/api", tags=["viva"])
 app.include_router(websocket_router, prefix="/ws", tags=["websockets"])
 
 

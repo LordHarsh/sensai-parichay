@@ -88,7 +88,7 @@ async def create_comprehensive_evaluation(exam_data: Dict[str, Any]) -> Dict[str
                     for i, qa in enumerate(exam_context.get("questions_and_answers", []))
                 ],
                 "generated_at": datetime.now().isoformat(),
-                "model_used": "gpt-5-nano"
+                "model_used": "..."
             }
             
             print("[DEBUG] Comprehensive evaluation completed successfully")

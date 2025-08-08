@@ -46,11 +46,13 @@ from api.db.cohort import create_cohort, add_members_to_cohort, add_course_to_co
 from api.routes.ai import _generate_course_structure
 from api.models import GenerateCourseJobStatus
 from api.utils.event_scoring import EventScorer
-from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai
+from api.utils.logging import logger
+from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai, generate_surprise_viva_questions
 from api.config import (
     exams_table_name,
     exam_sessions_table_name,
     exam_events_table_name,
+    surprise_viva_questions_table_name,
     users_table_name,
     organizations_table_name,
     user_organizations_table_name
@@ -1331,6 +1333,184 @@ class CustomCourseRequest(BaseModel):
     report_data: dict
     create_full_course: bool = True  # New field to enable full course creation
     course_name_override: Optional[str] = None  # Optional custom course name
+
+
+class SurpriseVivaRequest(BaseModel):
+    session_id: str
+    exam_id: str
+    cheating_evidence: dict  # Contains flagged events that triggered the viva
+
+
+class SurpriseVivaAnswerRequest(BaseModel):
+    session_id: str
+    answers: dict  # question_id -> answer mapping
+
+
+@router.post("/{exam_id}/surprise-viva", response_model=dict)
+async def trigger_surprise_viva(
+    exam_id: str,
+    request: SurpriseVivaRequest,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """Generate surprise viva questions when cheating is detected"""
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Get exam details
+            await cursor.execute(
+                f"SELECT title, description, questions FROM {exams_table_name} WHERE id = ?",
+                (exam_id,)
+            )
+            exam_row = await cursor.fetchone()
+            if not exam_row:
+                raise HTTPException(status_code=404, detail="Exam not found")
+            
+            title, description, questions_json = exam_row
+            questions = json.loads(questions_json)
+            
+            # Get organization's OpenAI API key
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                # Try to get from organization
+                await cursor.execute(f"""
+                    SELECT o.openai_api_key 
+                    FROM {organizations_table_name} o
+                    JOIN {exams_table_name} e ON e.org_id = o.id
+                    WHERE e.id = ?
+                """, (exam_id,))
+                org_row = await cursor.fetchone()
+                if org_row and org_row[0]:
+                    api_key = org_row[0]
+                else:
+                    raise HTTPException(status_code=400, detail="OpenAI API key not configured")
+            
+            # Generate viva questions
+            exam_context = {
+                "title": title,
+                "description": description,
+                "cheating_evidence": request.cheating_evidence
+            }
+            
+            viva_result = await generate_surprise_viva_questions(
+                api_key=api_key,
+                original_questions=questions,
+                exam_context=exam_context
+            )
+            
+            # Store viva questions in database
+            viva_questions = viva_result["viva_questions"]
+            stored_questions = []
+            
+            for question in viva_questions:
+                await cursor.execute(f"""
+                    INSERT INTO {surprise_viva_questions_table_name}
+                    (session_id, original_question_id, question_text, expected_answer, confidence_score)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    request.session_id,
+                    question["id"],
+                    question["question"],
+                    question["expected_answer"],
+                    0.9  # High confidence for generated questions
+                ))
+                
+                # Get the inserted ID
+                viva_id = cursor.lastrowid
+                stored_questions.append({
+                    "id": str(viva_id),
+                    "question": question["question"],
+                    "time_limit": question.get("time_limit", 180)
+                })
+            
+            await conn.commit()
+            
+            return {
+                "success": True,
+                "message": "Surprise viva questions generated",
+                "questions": stored_questions,
+                "instructions": viva_result.get("instructions", "Please answer these verification questions."),
+                "total_time_limit": len(stored_questions) * 180  # 3 minutes per question
+            }
+            
+    except Exception as e:
+        logger.error(f"Error generating surprise viva: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate viva questions: {str(e)}")
+
+
+@router.post("/surprise-viva/submit", response_model=dict)
+async def submit_surprise_viva_answers(
+    request: SurpriseVivaAnswerRequest,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """Submit answers for surprise viva questions"""
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Update viva questions with user answers and mark as completed
+            for question_id, answer in request.answers.items():
+                await cursor.execute(f"""
+                    UPDATE {surprise_viva_questions_table_name}
+                    SET user_answer = ?, answered_at = CURRENT_TIMESTAMP, status = 'completed'
+                    WHERE id = ? AND session_id = ?
+                """, (answer, question_id, request.session_id))
+            
+            # Get all viva questions for this session to calculate score
+            await cursor.execute(f"""
+                SELECT id, question_text, expected_answer, user_answer
+                FROM {surprise_viva_questions_table_name}
+                WHERE session_id = ?
+            """, (request.session_id,))
+            
+            viva_questions = await cursor.fetchall()
+            
+            # Simple scoring: check if answers are reasonably similar (would need more sophisticated scoring)
+            total_questions = len(viva_questions)
+            correct_answers = 0
+            
+            for viva_q in viva_questions:
+                viva_id, question_text, expected_answer, user_answer = viva_q
+                
+                # Simple scoring logic - in practice, you'd want more sophisticated NLP comparison
+                is_correct = False
+                if user_answer and expected_answer:
+                    # Basic keyword matching - could be improved with embeddings/semantic similarity
+                    user_words = set(user_answer.lower().split())
+                    expected_words = set(expected_answer.lower().split())
+                    overlap = len(user_words.intersection(expected_words))
+                    is_correct = overlap >= min(3, len(expected_words) // 2)  # At least half the key words
+                
+                # Update correctness
+                await cursor.execute(f"""
+                    UPDATE {surprise_viva_questions_table_name}
+                    SET is_correct = ?
+                    WHERE id = ?
+                """, (is_correct, viva_id))
+                
+                if is_correct:
+                    correct_answers += 1
+            
+            await conn.commit()
+            
+            # Calculate pass/fail
+            pass_threshold = 0.6  # 60% to pass
+            viva_score = correct_answers / total_questions if total_questions > 0 else 0
+            passed = viva_score >= pass_threshold
+            
+            return {
+                "success": True,
+                "viva_completed": True,
+                "score": viva_score,
+                "correct_answers": correct_answers,
+                "total_questions": total_questions,
+                "passed": passed,
+                "message": "Viva submitted successfully" if passed else "Viva failed - exam may be invalidated"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error submitting viva answers: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to submit viva answers: {str(e)}")
 
 
 @router.post("/generate-report", response_model=dict)

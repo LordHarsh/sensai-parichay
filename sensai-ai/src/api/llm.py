@@ -712,3 +712,143 @@ Return only the description text, without quotes or additional formatting.
     except Exception as e:
         logger.error(f"Error in exam description generation: {str(e)}")
         raise Exception(f"Failed to generate exam description: {str(e)}")
+
+
+async def generate_surprise_viva_questions(
+    api_key: str,
+    original_questions: list,
+    exam_context: dict,
+    model: str = "gpt-4o-mini"  # Using 4o-mini as the current equivalent to 4.1-nano
+) -> dict:
+    """
+    Generate 1-2 similar questions for surprise viva when cheating is detected
+    
+    Args:
+        api_key: OpenAI API key
+        original_questions: List of original exam questions
+        exam_context: Context about the exam and student behavior
+        model: OpenAI model to use
+        
+    Returns:
+        Dictionary with generated viva questions and answers
+    """
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Create context for the AI
+        questions_context = "\n".join([
+            f"Q{i+1}: {q.get('question', 'Unknown question')}" 
+            for i, q in enumerate(original_questions[:3])  # Limit to first 3 for context
+        ])
+        
+        # Create prompt for viva question generation
+        viva_prompt = f"""
+You are an expert exam proctor who needs to create surprise viva questions to verify student understanding.
+
+CONTEXT:
+- Suspicious activity detected during exam (potential cheating)
+- Need to generate 1-2 similar questions to verify genuine understanding
+- Questions should test the same concepts but with different wording/examples
+
+ORIGINAL EXAM QUESTIONS:
+{questions_context}
+
+EXAM DETAILS:
+- Subject: {exam_context.get('title', 'Unknown')}
+- Level: {exam_context.get('description', 'General assessment')}
+
+REQUIREMENTS:
+1. Generate exactly 2 questions that test similar concepts to the original questions
+2. Questions should be at the same difficulty level
+3. Require short, specific answers (1-3 sentences)
+4. Focus on understanding, not memorization
+5. Should be answerable within 2-3 minutes each
+
+Generate questions in this JSON format:
+
+{{
+    "viva_questions": [
+        {{
+            "id": "viva_1",
+            "question": "Clear, specific question testing understanding",
+            "expected_answer": "Brief expected answer or key points",
+            "difficulty": "same",
+            "time_limit": 180
+        }},
+        {{
+            "id": "viva_2", 
+            "question": "Another question testing related concepts",
+            "expected_answer": "Brief expected answer or key points",
+            "difficulty": "same",
+            "time_limit": 180
+        }}
+    ],
+    "instructions": "Answer these questions to verify your understanding. This is a standard verification process."
+}}
+
+Make the questions fair but effective at detecting genuine understanding vs. copied answers.
+"""
+
+        logger.info("Generating surprise viva questions with OpenAI...")
+        
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert exam proctor who creates fair but effective verification questions to detect genuine understanding. Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": viva_prompt
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,  # Balanced creativity and consistency
+            max_tokens=1000  # Limit for concise questions
+        )
+        
+        logger.info(f"OpenAI viva generation completed. Usage: {completion.usage}")
+        
+        # Check if we got a valid response
+        if not completion.choices or not completion.choices[0].message.content:
+            logger.error("OpenAI returned empty response for viva generation")
+            raise Exception("OpenAI returned empty response")
+        
+        content = completion.choices[0].message.content.strip()
+        if not content:
+            logger.error("OpenAI returned empty content for viva generation")
+            raise Exception("OpenAI returned empty content")
+        
+        # Parse the JSON response
+        try:
+            result = json.loads(content)
+            logger.info("Successfully parsed viva questions response as JSON")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse viva questions response as JSON: {e}")
+            logger.error(f"Raw content: {repr(content)}")
+            raise Exception(f"OpenAI response is not valid JSON: {str(e)}")
+        
+        # Validate the structure
+        if "viva_questions" not in result:
+            raise Exception("Generated content missing 'viva_questions' field")
+        
+        questions = result["viva_questions"]
+        if not isinstance(questions, list) or len(questions) == 0:
+            raise Exception("No viva questions generated")
+        
+        # Add metadata
+        result["generation_metadata"] = {
+            "model_used": model,
+            "generation_timestamp": json.dumps({"timestamp": "now"}, default=str),
+            "total_tokens": completion.usage.total_tokens if completion.usage else 0,
+            "questions_generated": len(questions),
+            "trigger": "cheating_detection"
+        }
+        
+        logger.info(f"Generated {len(questions)} surprise viva questions successfully")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in surprise viva generation: {str(e)}")
+        raise Exception(f"Failed to generate surprise viva questions: {str(e)}")

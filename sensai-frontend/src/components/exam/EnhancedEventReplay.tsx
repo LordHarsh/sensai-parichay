@@ -505,7 +505,7 @@ export default function EnhancedEventReplay({
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handlePlay}
-                  className="flex items-center space-x-2 bg-white text-black hover:opacity-90 px-4 py-2 rounded text-white font-medium transition-colors"
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-white font-medium transition-colors"
                 >
                   {isPlaying ? <Pause size={18} /> : <Play size={18} />}
                   <span>{isPlaying ? 'Pause' : 'Play'}</span>
