@@ -46,6 +46,7 @@ from api.db.cohort import create_cohort, add_members_to_cohort, add_course_to_co
 from api.routes.ai import _generate_course_structure
 from api.models import GenerateCourseJobStatus
 from api.utils.event_scoring import EventScorer
+from api.utils.style_analyzer import analyze_exam_writing_style
 from api.utils.logging import logger
 from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai, generate_surprise_viva_questions
 from api.config import (
@@ -510,7 +511,59 @@ async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: 
             
             await conn.commit()
             
-        return {"message": "Exam submitted successfully", "score": score, "session_id": existing_session_id}
+            # Perform writing style analysis
+            style_analysis_result = None
+            try:
+                analysis_result = await analyze_exam_writing_style(submission.answers)
+                style_analysis_result = {
+                    "has_style_change": analysis_result.has_style_change,
+                    "confidence_score": analysis_result.confidence_score,
+                    "style_inconsistencies": analysis_result.style_inconsistencies,
+                    "analysis_summary": analysis_result.analysis_summary
+                }
+                
+                # Generate writing style drift event if significant changes detected
+                if analysis_result.has_style_change:
+                    # Create event data
+                    event_data = {
+                        "exam_id": exam_id,
+                        "session_id": existing_session_id,
+                        "drift_score": analysis_result.confidence_score,
+                        "style_inconsistencies": analysis_result.style_inconsistencies,
+                        "analysis_summary": analysis_result.analysis_summary,
+                        "samples_compared": analysis_result.samples_compared
+                    }
+                    
+                    # Store the event in the database
+                    async with get_new_db_connection() as event_conn:
+                        event_cursor = await event_conn.cursor()
+                        await event_cursor.execute(
+                            f"""INSERT INTO {exam_events_table_name}
+                                (id, session_id, event_type, event_data, timestamp, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)""",
+                            (
+                                str(uuid.uuid4()),
+                                existing_session_id,
+                                "writing_style_drift",
+                                json.dumps(event_data),
+                                int(datetime.now().timestamp() * 1000),
+                                datetime.now()
+                            )
+                        )
+                        await event_conn.commit()
+                        
+            except Exception as e:
+                print(f"Error in writing style analysis: {e}")
+                # Don't fail the exam submission if style analysis fails
+                style_analysis_result = {
+                    "error": f"Style analysis failed: {str(e)}"
+                }
+            
+        response = {"message": "Exam submitted successfully", "score": score, "session_id": existing_session_id}
+        if style_analysis_result:
+            response["style_analysis"] = style_analysis_result
+            
+        return response
         
     except HTTPException:
         raise
