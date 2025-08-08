@@ -864,6 +864,35 @@ class ValidateFaceResponse(BaseModel):
     error: Optional[str] = None
 
 
+class UploadVerificationRequest(BaseModel):
+    file_type: str = "image/jpeg"
+    exam_id: str
+
+
+class DirectUploadVerificationRequest(BaseModel):
+    image_data: str  # base64 encoded image
+    exam_id: str
+
+
+class UploadVerificationResponse(BaseModel):
+    success: bool
+    presigned_url: Optional[str] = None
+    s3_key: Optional[str] = None
+    error: Optional[str] = None
+
+
+class VerifyIdentityRequest(BaseModel):
+    verification_s3_key: str
+    reference_s3_key: str
+    exam_id: str
+
+
+class VerifyIdentityResponse(BaseModel):
+    success: bool
+    verified: bool
+    confidence_score: Optional[float] = None
+    error_message: Optional[str] = None
+    error: Optional[str] = None
 # Exam Evaluation Models
 class ExamEvaluationRequest(BaseModel):
     session_id: str
