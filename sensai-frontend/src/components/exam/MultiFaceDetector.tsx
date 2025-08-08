@@ -107,7 +107,7 @@ const MultiFaceDetector: React.FC<MultiFaceDetectorProps> = ({ websocket, enable
         // Send end-of-violation event
         if (isViolating) {
           logFaceEvent('face_detection_update', detectedFaces); // Send "back to normal" event
-          console.log(`✅ MultiFace: Back to ${EXPECTED_FACES} face (violation lasted ${Math.round(totalDuration / 1000)}s)`);
+          console.log(`MultiFace: Back to ${EXPECTED_FACES} face (violation lasted ${Math.round(totalDuration / 1000)}s)`);
         }
         
         setViolationStartTime(null);
@@ -341,9 +341,9 @@ const MultiFaceDetector: React.FC<MultiFaceDetectorProps> = ({ websocket, enable
 
     return (
       <div className="fixed top-4 right-4 z-50">
-        <div className={`px-3 py-1 rounded-full text-white text-xs font-medium ${color} shadow-lg`}>
+        <div className={`px-3 py-1 rounded-md text-white text-xs font-medium ${color} shadow-lg`}>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isViolating ? 'animate-pulse' : ''} bg-white`}></div>
+            <div className={`w-2 h-2 rounded-md ${isViolating ? 'animate-pulse' : ''} bg-white`}></div>
             Face Count: {status}
           </div>
         </div>

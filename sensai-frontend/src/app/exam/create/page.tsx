@@ -225,16 +225,16 @@ export default function CreateExamPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-4xl mx-auto py-8 px-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Create New Exam</h1>
+          <h1 className="text-3xl font-light mb-2">Create New Exam</h1>
           <p className="text-gray-400">Design a comprehensive exam with monitoring features</p>
         </div>
 
         <div className="space-y-8">
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
+          <div className="bg-[#111111] p-6 rounded-md border border-gray-700">
+            <h2 className="text-xl font-light mb-4">Basic Information</h2>
 
             <div className="space-y-4">
               <div>
@@ -244,7 +244,7 @@ export default function CreateExamPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Enter exam title"
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                 />
               </div>
 
@@ -254,12 +254,12 @@ export default function CreateExamPage() {
                   <button
                     onClick={generateDescription}
                     disabled={isGeneratingDescription || !title.trim() || isCreating}
-                    className="flex items-center space-x-1 px-2 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-xs font-medium transition-colors"
+                    className="flex items-center space-x-1 px-3 py-1 bg-white text-black hover:opacity-90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-xs font-medium transition-opacity"
                     title="Generate description based on exam title"
                   >
                     {isGeneratingDescription ? (
                       <>
-                        <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-3 h-3 border border-black border-t-transparent rounded-full animate-spin"></div>
                         <span>Generating...</span>
                       </>
                     ) : (
@@ -275,11 +275,11 @@ export default function CreateExamPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Enter exam description"
                   rows={3}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-gray-700 hover:border-gray-700 resize-none transition-colors"
                   disabled={isGeneratingDescription}
                 />
                 {title.trim() && !description.trim() && (
-                  <p className="text-xs text-blue-400 mt-1 flex items-center">
+                  <p className="text-xs text-gray-400 mt-1 flex items-center">
                     <Sparkles size={12} className="mr-1" />
                     Tip: Click "Auto-complete" to generate a description based on your title{selectedCourseId ? ' and course content' : ''}
                   </p>
@@ -294,37 +294,37 @@ export default function CreateExamPage() {
                   onChange={(e) => setDuration(Number(e.target.value))}
                   min="1"
                   max="300"
-                  className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  className="w-32 bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md border border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Questions ({questions.length})</h2>
+              <h2 className="text-xl font-light">Questions ({questions.length})</h2>
               <div className="flex space-x-2">
                 <button
                   onClick={() => addQuestion('multiple_choice')}
-                  className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm transition-colors"
+                  className="bg-white text-black px-3 py-2 rounded-md text-sm hover:opacity-90 transition-opacity font-medium"
                 >
                   + Multiple Choice
                 </button>
                 <button
                   onClick={() => addQuestion('text')}
-                  className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-sm transition-colors"
+                  className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-md text-sm transition-colors font-medium"
                 >
                   + Short Answer
                 </button>
                 <button
                   onClick={() => addQuestion('essay')}
-                  className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-sm transition-colors"
+                  className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded-md text-sm transition-colors font-medium"
                 >
                   + Essay
                 </button>
                 <button
                   onClick={() => addQuestion('code')}
-                  className="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded text-sm transition-colors"
+                  className="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded-md text-sm transition-colors font-medium"
                 >
                   + Code
                 </button>
@@ -338,9 +338,9 @@ export default function CreateExamPage() {
             ) : (
               <div className="space-y-6">
                 {questions.map((question, index) => (
-                  <div key={question.id} className="border border-gray-700 rounded-lg p-4">
+                  <div key={question.id} className="border border-gray-700 rounded-md p-4">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">Question {index + 1}</h3>
+                      <h3 className="font-medium">Question {index + 1}</h3>
                       <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-400 capitalize">
                           {question.type.replace('_', ' ')}
@@ -362,7 +362,7 @@ export default function CreateExamPage() {
                           onChange={(e) => updateQuestion(index, { question: e.target.value })}
                           placeholder="Enter your question"
                           rows={2}
-                          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
+                          className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
                         />
                       </div>
 
@@ -384,7 +384,7 @@ export default function CreateExamPage() {
                                   value={option.text}
                                   onChange={(e) => updateOption(index, optionIndex, e.target.value)}
                                   placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
-                                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
+                                  className="flex-1 bg-[#1A1A1A] border border-gray-700 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
                                 />
                               </div>
                             ))}
@@ -404,7 +404,7 @@ export default function CreateExamPage() {
                             onChange={(e) => updateQuestion(index, { points: Number(e.target.value) })}
                             min="1"
                             max="100"
-                            className="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
+                            className="w-20 bg-[#1A1A1A] border border-gray-700 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
                           />
                         </div>
 
@@ -416,7 +416,7 @@ export default function CreateExamPage() {
                               onChange={(e) => updateQuestion(index, {
                                 metadata: { ...question.metadata, language: e.target.value }
                               })}
-                              className="bg-gray-700 border border-gray-600 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
+                              className="bg-[#1A1A1A] border border-gray-700 rounded px-3 py-1 focus:outline-none focus:border-blue-500"
                             >
                               <option value="javascript">JavaScript</option>
                               <option value="python">Python</option>
@@ -436,15 +436,15 @@ export default function CreateExamPage() {
           </div>
 
           {/* Organization and Course Selection */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Organization & Course</h2>
+          <div className="bg-[#111111] p-6 rounded-md border border-gray-700">
+            <h2 className="text-xl font-light mb-4">Organization & Course</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Select Organization (Optional)</label>
                 <select
                   value={selectedOrgId || ""}
                   onChange={(e) => handleOrgChange(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                 >
                   <option value="">Personal Exam (No Organization)</option>
                   {schools?.map((school) => (
@@ -464,14 +464,14 @@ export default function CreateExamPage() {
                   </span>
                 </label>
                 {isLoadingCourses ? (
-                  <div className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-400">
+                  <div className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 text-gray-400">
                     Loading courses...
                   </div>
                 ) : (
                   <select
                     value={selectedCourseId || ""}
                     onChange={(e) => setSelectedCourseId(e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-2 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={courses.length === 0}
                   >
                     <option value="">No Course (General Topic-Based)</option>
@@ -492,8 +492,8 @@ export default function CreateExamPage() {
           </div>
 
           {/* Exam Settings */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Exam Behavior Settings</h2>
+          <div className="bg-[#111111] p-6 rounded-md border border-gray-700">
+            <h2 className="text-xl font-light mb-4">Exam Behavior Settings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -616,15 +616,15 @@ export default function CreateExamPage() {
                   }))}
                   min="1"
                   max="10"
-                  className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                  className="w-24 bg-[#1A1A1A] border border-gray-700 rounded-md px-3 py-2 focus:outline-none focus:border-blue-500"
                 />
               </div>
             )}
           </div>
 
           {/* Monitoring Settings */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Cheating Detection & Monitoring</h2>
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h2 className="text-xl font-medium mb-4">Cheating Detection & Monitoring</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -763,14 +763,14 @@ export default function CreateExamPage() {
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => router.push('/')}
-              className="px-6 py-3 border border-gray-600 rounded-lg hover:border-gray-500 transition-colors"
+              className="px-6 py-3 border border-gray-700 rounded-md hover:border-gray-700 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={createExam}
               disabled={isCreating || !title || !description || questions.length === 0}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-white text-black rounded-md font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isCreating ? 'Creating...' : 'Create Exam'}
             </button>

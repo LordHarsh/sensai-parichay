@@ -81,7 +81,7 @@ export default function WPMAnalytics({ wpmData, sessionId }: WPMAnalyticsProps) 
 
   if (!analytics) {
     return (
-      <div className="bg-gray-800 p-6 rounded-lg">
+      <div className="bg-[#111111] p-6 rounded-md">
         <h2 className="text-xl font-semibold mb-4 flex items-center">
           <Activity className="mr-2" size={20} />
           WPM Analytics
@@ -101,7 +101,7 @@ export default function WPMAnalytics({ wpmData, sessionId }: WPMAnalyticsProps) 
   };
 
   return (
-    <div className="bg-gray-800 p-6 rounded-lg space-y-6">
+    <div className="bg-[#111111] p-6 rounded-md space-y-6">
       <h2 className="text-xl font-semibold mb-4 flex items-center">
         <Activity className="mr-2" size={20} />
         WPM Analytics ({analytics.totalDataPoints} data points)
@@ -109,23 +109,23 @@ export default function WPMAnalytics({ wpmData, sessionId }: WPMAnalyticsProps) 
 
       {/* Summary Statistics */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-blue-400">{analytics.avgWPM}</div>
           <div className="text-xs text-gray-400">Avg WPM</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-green-400">{analytics.maxWPM}</div>
           <div className="text-xs text-gray-400">Max WPM</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-orange-400">{analytics.minWPM}</div>
           <div className="text-xs text-gray-400">Min WPM</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-purple-400">{analytics.avgAccuracy}%</div>
           <div className="text-xs text-gray-400">Avg Accuracy</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-cyan-400">{analytics.consistencyScore}%</div>
           <div className="text-xs text-gray-400">Consistency</div>
         </div>
@@ -133,7 +133,7 @@ export default function WPMAnalytics({ wpmData, sessionId }: WPMAnalyticsProps) 
 
       {/* Anomaly Detection */}
       {analytics.anomalies.length > 0 && (
-        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-lg">
+        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-md">
           <h3 className="font-semibold text-red-400 mb-2 flex items-center">
             <Target className="mr-2" size={16} />
             WPM Anomalies Detected ({analytics.anomalies.length})
@@ -144,7 +144,7 @@ export default function WPMAnalytics({ wpmData, sessionId }: WPMAnalyticsProps) 
           <div className="mt-2 space-y-1">
             {analytics.anomalies.slice(0, 3).map((anomaly, index) => (
               <div key={index} className="text-xs text-red-200">
-                • {anomaly.wpm} WPM at {new Date(anomaly.timestamp).toLocaleTimeString()} 
+                {anomaly.wpm} WPM at {new Date(anomaly.timestamp).toLocaleTimeString()} 
                 {anomaly.question_id && ` (Question ${anomaly.question_id})`}
               </div>
             ))}

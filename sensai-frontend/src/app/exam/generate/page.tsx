@@ -261,13 +261,11 @@ export default function GenerateAIExamPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-4xl mx-auto py-8 px-6">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <Brain className="text-blue-400" size={32} />
-            <h1 className="text-3xl font-bold">Generate AI Exam</h1>
-            <Sparkles className="text-yellow-400" size={24} />
+            <h1 className="text-3xl font-light">Generate AI Exam</h1>
           </div>
           <p className="text-gray-400 leading-relaxed">
             Create comprehensive exams automatically using AI. Choose from course-based generation 
@@ -277,12 +275,11 @@ export default function GenerateAIExamPage() {
 
         <div className="space-y-8">
           {/* Course-Based Exam Generation */}
-          <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-500/30 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <BookOpen className="mr-2 text-blue-400" size={20} />
+          <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-500/30 p-6 rounded-md">
+            <h2 className="text-xl font-medium mb-4 flex items-center">
               Quick Course-Based Exam
             </h2>
-            <p className="text-gray-300 text-sm mb-4">
+            <p className="text-gray-200 text-sm mb-4">
               Generate an exam directly from course content including milestones, tasks, and learning outcomes.
             </p>
             
@@ -292,18 +289,18 @@ export default function GenerateAIExamPage() {
                   Select Course <span className="text-red-400">*</span>
                 </label>
                 {isLoadingCourses ? (
-                  <div className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-gray-400">
+                  <div className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 text-gray-400">
                     Loading courses...
                   </div>
                 ) : courseError ? (
-                  <div className="w-full bg-red-900/30 border border-red-500/50 rounded-lg px-4 py-3 text-red-300">
+                  <div className="w-full bg-red-900/30 border border-red-500/50 rounded-md px-4 py-3 text-red-300">
                     {courseError}
                   </div>
                 ) : (
                   <select
                     value={selectedCourseId || ""}
                     onChange={(e) => handleCourseSelection(e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={isGenerating}
                   >
                     <option value="">Select a course...</option>
@@ -325,7 +322,7 @@ export default function GenerateAIExamPage() {
                     onChange={(e) => setMaxQuestions(Number(e.target.value))}
                     min="1"
                     max="50"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={isGenerating}
                   />
                 </div>
@@ -338,7 +335,7 @@ export default function GenerateAIExamPage() {
                     min="5"
                     max="300"
                     placeholder="60"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={isGenerating}
                   />
                 </div>
@@ -354,7 +351,7 @@ export default function GenerateAIExamPage() {
               <button
                 onClick={generateCourseBasedExam}
                 disabled={isGenerating || !selectedCourseId}
-                className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2"
+                className="w-full px-6 py-3 bg-white text-black  hover:opacity-90 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium transition-opacity flex items-center justify-center space-x-2"
               >
                 <Brain size={20} />
                 <span>{isGenerating ? "Generating..." : "Generate Course Exam"}</span>
@@ -365,18 +362,18 @@ export default function GenerateAIExamPage() {
 
           {/* Divider */}
           <div className="flex items-center">
-            <div className="flex-1 border-t border-gray-600"></div>
+            <div className="flex-1 border-t border-gray-700"></div>
             <span className="px-4 text-gray-400 text-sm">OR</span>
-            <div className="flex-1 border-t border-gray-600"></div>
+            <div className="flex-1 border-t border-gray-700"></div>
           </div>
 
           {/* Custom Exam Generation */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
+          <div className="bg-[#111111] border border-gray-700 p-6 rounded-md">
+            <h2 className="text-xl font-medium mb-4 flex items-center">
               <Settings className="mr-2" size={20} />
               Custom Topic Exam
             </h2>
-            <p className="text-gray-300 text-sm mb-4">
+            <p className="text-gray-200 text-sm mb-4">
               Create an exam on any topic with custom title and description.
             </p>
             
@@ -390,7 +387,7 @@ export default function GenerateAIExamPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., JavaScript Programming Assessment"
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                   disabled={isGenerating}
                 />
               </div>
@@ -424,7 +421,7 @@ export default function GenerateAIExamPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe the topics, learning objectives, and scope of the exam. Be specific - this helps AI generate better questions. For example: 'A comprehensive assessment covering JavaScript fundamentals, ES6 features, DOM manipulation, asynchronous programming, and basic algorithms.'"
                   rows={4}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors resize-none"
                   disabled={isGenerating || isGeneratingDescription}
                 />
                 {title.trim() && !description.trim() && (
@@ -444,7 +441,7 @@ export default function GenerateAIExamPage() {
                     onChange={(e) => setMaxQuestions(Number(e.target.value))}
                     min="1"
                     max="50"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={isGenerating}
                   />
                 </div>
@@ -457,7 +454,7 @@ export default function GenerateAIExamPage() {
                     min="5"
                     max="300"
                     placeholder="Optional"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-md px-4 py-3 focus:outline-none focus:border-gray-700 hover:border-gray-700 transition-colors"
                     disabled={isGenerating}
                   />
                 </div>
@@ -473,7 +470,7 @@ export default function GenerateAIExamPage() {
               <button
                 onClick={generateCustomExam}
                 disabled={isGenerating || !title || !description}
-                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2"
+                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed rounded-md font-medium transition-all duration-200 flex items-center justify-center space-x-2"
               >
                 <Brain size={20} />
                 <span>{isGenerating ? "Generating..." : "Generate Custom Exam"}</span>

@@ -97,20 +97,23 @@ export default function ExamResultsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading results...</div>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-white text-xl">Loading results...</div>
+        </div>
       </div>
     );
   }
 
   if (error || !results) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 text-xl mb-4">{error || 'No results found'}</div>
           <button
             onClick={() => router.push('/')}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
+            className="bg-white text-black hover:opacity-90 px-4 py-2 rounded-md transition-colors"
           >
             Go Home
           </button>
@@ -120,58 +123,58 @@ export default function ExamResultsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-4xl mx-auto py-8 px-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">{results.exam_title}</h1>
-          <p className="text-gray-400">Exam Results</p>
+          <h1 className="text-3xl font-light mb-2">{results.exam_title}</h1>
+          <p className="text-gray-200">Exam Results</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-semibold">Score</h3>
-              <div className={`text-2xl font-bold ${getScoreColor(results.score)}`}>
+              <h3 className="text-lg font-medium">Score</h3>
+              <div className={`text-2xl font-light ${getScoreColor(results.score)}`}>
                 {results.score}%
               </div>
             </div>
-            <div className="text-sm text-gray-400">
+            <div className="text-sm text-gray-200">
               {results.answers ? Object.keys(results.answers).length : 0} of {results.questions.length} answered
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2">Duration</h3>
-            <div className="text-2xl font-bold text-blue-400">
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h3 className="text-lg font-medium mb-2">Duration</h3>
+            <div className="text-2xl font-light text-blue-400">
               {formatDuration(results.start_time, results.end_time || results.start_time)}
             </div>
-            <div className="text-sm text-gray-400">Time taken</div>
+            <div className="text-sm text-gray-200">Time taken</div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2">Status</h3>
-            <div className={`text-2xl font-bold ${
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h3 className="text-lg font-medium mb-2">Status</h3>
+            <div className={`text-2xl font-light ${
               results.status === 'completed' ? 'text-green-400' : 'text-orange-400'
             }`}>
               {results.status.charAt(0).toUpperCase() + results.status.slice(1)}
             </div>
-            <div className="text-sm text-gray-400">
+            <div className="text-sm text-gray-200">
               {new Date(results.end_time || results.start_time).toLocaleDateString()}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h3 className="text-xl font-semibold mb-4">Monitoring Summary</h3>
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h3 className="text-xl font-medium mb-4">Monitoring Summary</h3>
             <div className="space-y-3">
               {Object.entries(results.events_summary).map(([eventType, count]) => (
                 <div key={eventType} className="flex justify-between items-center">
-                  <span className="capitalize text-gray-300">
+                  <span className="capitalize text-gray-200">
                     {eventType.replace('_', ' ')}
                   </span>
-                  <span className={`font-semibold ${
-                    eventType.includes('switch') || eventType.includes('paste') ? 'text-yellow-400' : 'text-gray-400'
+                  <span className={`font-medium ${
+                    eventType.includes('switch') || eventType.includes('paste') ? 'text-yellow-400' : 'text-gray-200'
                   }`}>
                     {count}
                   </span>
@@ -179,31 +182,31 @@ export default function ExamResultsPage() {
               ))}
               
               {Object.keys(results.events_summary).length === 0 && (
-                <div className="text-gray-400 text-center py-4">
+                <div className="text-gray-200 text-center py-4">
                   No monitoring events recorded
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h3 className="text-xl font-semibold mb-4">Recording Info</h3>
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h3 className="text-xl font-medium mb-4">Recording Info</h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-gray-300">Video chunks</span>
-                <span className="font-semibold text-blue-400">
+                <span className="text-gray-200">Video chunks</span>
+                <span className="font-medium text-blue-400">
                   {results.video_info.chunk_count}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-300">Total size</span>
-                <span className="font-semibold text-blue-400">
+                <span className="text-gray-200">Total size</span>
+                <span className="font-medium text-blue-400">
                   {formatBytes(results.video_info.total_size)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-300">Recording status</span>
-                <span className="font-semibold text-green-400">
+                <span className="text-gray-200">Recording status</span>
+                <span className="font-medium text-green-400">
                   {results.video_info.chunk_count > 0 ? 'Recorded' : 'Not recorded'}
                 </span>
               </div>
@@ -211,15 +214,15 @@ export default function ExamResultsPage() {
           </div>
         </div>
 
-        <div className="bg-gray-800 p-6 rounded-lg mt-8">
-          <h3 className="text-xl font-semibold mb-4">Question Summary</h3>
+        <div className="bg-[#111111] p-6 rounded-md mt-8">
+          <h3 className="text-xl font-medium mb-4">Question Summary</h3>
           <div className="space-y-4">
             {results.questions.map((question, index) => {
               const userAnswer = results.answers[question.id] || '';
               const isCorrect = question.correct_answer && userAnswer === question.correct_answer;
               
               return (
-                <div key={question.id} className="border border-gray-700 rounded-lg p-4">
+                <div key={question.id} className="border border-gray-700 rounded-md p-4">
                   <div className="flex items-start justify-between mb-2">
                     <h4 className="font-medium text-gray-200">
                       Question {index + 1}
@@ -228,23 +231,23 @@ export default function ExamResultsPage() {
                       {question.type === 'multiple_choice' && (
                         <span className={`text-sm px-2 py-1 rounded ${
                           isCorrect ? 'bg-green-900 text-green-300' : 
-                          userAnswer ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-300'
+                          userAnswer ? 'bg-red-900 text-red-300' : 'bg-[#1A1A1A] text-gray-200'
                         }`}>
                           {isCorrect ? 'Correct' : userAnswer ? 'Incorrect' : 'Not answered'}
                         </span>
                       )}
-                      <span className="text-sm text-gray-400">
+                      <span className="text-sm text-gray-200">
                         {question.points} {question.points === 1 ? 'point' : 'points'}
                       </span>
                     </div>
                   </div>
                   
-                  <p className="text-gray-300 mb-3">{question.question}</p>
+                  <p className="text-gray-200 mb-3">{question.question}</p>
                   
                   {userAnswer && (
-                    <div className="bg-gray-700 p-3 rounded">
-                      <div className="text-sm text-gray-400 mb-1">Your answer:</div>
-                      <div className="text-gray-200">{userAnswer}</div>
+                    <div className="bg-[#1A1A1A] p-3 rounded">
+                      <div className="text-sm text-gray-200 mb-1">Your answer:</div>
+                      <div className="text-gray-100">{userAnswer}</div>
                     </div>
                   )}
                 </div>
@@ -256,7 +259,7 @@ export default function ExamResultsPage() {
         <div className="flex justify-center mt-8">
           <button
             onClick={() => router.push('/')}
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors"
+            className="bg-white text-black hover:opacity-90 px-6 py-3 rounded-md font-medium transition-colors"
           >
             Back to Dashboard
           </button>

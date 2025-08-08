@@ -199,7 +199,7 @@ const UnifiedCameraTracker: React.FC<UnifiedCameraTrackerProps> = ({ websocket, 
               const awayDuration = now - gazeAwayStartTime.current;
               setGazeIsLookingAway(false);
               logGazeEvent(gazePos, now, false);
-              console.log(`✅ Unified: Gaze returned (was away ${Math.round(awayDuration / 1000)}s)`);
+              console.log(`Unified: Gaze returned (was away ${Math.round(awayDuration / 1000)}s)`);
               gazeAwayStartTime.current = null;
             }
           }
@@ -251,7 +251,7 @@ const UnifiedCameraTracker: React.FC<UnifiedCameraTrackerProps> = ({ websocket, 
           if (faceViolationStartTime.current && isFaceViolating) {
             const totalDuration = now - faceViolationStartTime.current;
             logFaceEvent('face_detection_update', detectedFaces);
-            console.log(`✅ Unified: Back to ${FACE_EXPECTED_COUNT} face`);
+            console.log(`Unified: Back to ${FACE_EXPECTED_COUNT} face`);
             faceViolationStartTime.current = null;
             setFaceViolationDuration(0);
             setIsFaceViolating(false);
@@ -403,13 +403,13 @@ const UnifiedCameraTracker: React.FC<UnifiedCameraTrackerProps> = ({ websocket, 
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {/* Gaze Tracking Status */}
         {gazeEnabled && (
-          <div className={`px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg ${
+          <div className={`px-3 py-1 rounded-md text-white text-xs font-medium shadow-lg ${
             !isInitialized ? 'bg-blue-500' :
             !gazeIsCalibrated ? 'bg-yellow-500 animate-pulse' :
             gazeIsLookingAway ? 'bg-red-500 animate-pulse' : 'bg-green-500'
           }`}>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-white"></div>
+              <div className="w-2 h-2 rounded-md bg-white"></div>
               {!isInitialized ? 'Starting...' :
                !gazeIsCalibrated ? `Calibrating...` :
                gazeIsLookingAway ? `Away (${Math.round(gazeAwayDuration / 1000)}s)` : 'Gaze: Tracking'}
@@ -419,12 +419,12 @@ const UnifiedCameraTracker: React.FC<UnifiedCameraTrackerProps> = ({ websocket, 
 
         {/* Face Counting Status */}
         {faceEnabled && isInitialized && (
-          <div className={`px-3 py-1 rounded-full text-white text-xs font-medium shadow-lg ${
+          <div className={`px-3 py-1 rounded-md text-white text-xs font-medium shadow-lg ${
             isFaceViolating ? 'bg-red-500 animate-pulse' :
             faceCount === 1 ? 'bg-green-500' : 'bg-yellow-500'
           }`}>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-white"></div>
+              <div className="w-2 h-2 rounded-md bg-white"></div>
               {isFaceViolating ? 
                 `${faceCount} faces (${Math.round(faceViolationDuration / 1000)}s)` : 
                 `Faces: ${faceCount}`}

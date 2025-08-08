@@ -391,7 +391,7 @@ export default function EnhancedEventReplay({
       case 'window_focus_lost':
         return 'border-red-500 bg-red-900/20';
       default:
-        return 'border-gray-500 bg-gray-900/20';
+        return 'border-gray-500 bg-black/20';
     }
   };
 
@@ -469,7 +469,7 @@ export default function EnhancedEventReplay({
 
   if (!events.length) {
     return (
-      <div className="bg-gray-900 border border-gray-700 p-8 rounded-lg">
+      <div className="bg-black border border-gray-700 p-8 rounded-md">
         <h2 className="text-2xl font-semibold mb-6 flex items-center text-white">
           <Video className="mr-3" size={24} />
           Enhanced Event Replay
@@ -486,11 +486,11 @@ export default function EnhancedEventReplay({
   const currentEvent = filteredEvents[currentEventIndex];
 
   return (
-    <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+    <div className="bg-black border border-gray-700 p-6 rounded-md">
       <h2 className="text-2xl font-semibold mb-6 flex items-center text-white">
         <Play className="mr-3" size={24} />
         Event Replay 
-        <span className="ml-3 px-3 py-1 bg-gray-800 border border-gray-600 rounded-full text-sm">
+        <span className="ml-3 px-3 py-1 bg-[#111111] border border-gray-600 rounded-md text-sm">
           {filteredEvents.length} events
         </span>
       </h2>
@@ -500,12 +500,12 @@ export default function EnhancedEventReplay({
         {/* Left Side: Event Controls and Timeline */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Controls */}
-          <div className="bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
+          <div className="bg-[#111111] border border-gray-700 p-4 rounded-md mb-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handlePlay}
-                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white font-medium transition-colors"
+                  className="flex items-center space-x-2 bg-white text-black hover:opacity-90 px-4 py-2 rounded text-white font-medium transition-colors"
                 >
                   {isPlaying ? <Pause size={18} /> : <Play size={18} />}
                   <span>{isPlaying ? 'Pause' : 'Play'}</span>
@@ -544,7 +544,7 @@ export default function EnhancedEventReplay({
 
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-300">Speed:</label>
+                  <label className="text-sm text-gray-200">Speed:</label>
                   <select
                     value={playbackSpeed}
                     onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
@@ -558,7 +558,7 @@ export default function EnhancedEventReplay({
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-300">Filter:</label>
+                  <label className="text-sm text-gray-200">Filter:</label>
                   <select
                     value={selectedEventType}
                     onChange={(e) => setSelectedEventType(e.target.value)}
@@ -579,17 +579,17 @@ export default function EnhancedEventReplay({
           </div>
 
           {/* Progress Bar */}
-          <div className="bg-gray-800 border border-gray-700 p-4 rounded-lg mb-4">
-            <div className="flex justify-between text-sm text-gray-300 mb-3">
+          <div className="bg-[#111111] border border-gray-700 p-4 rounded-md mb-4">
+            <div className="flex justify-between text-sm text-gray-200 mb-3">
               <span className="font-medium">Event {currentEventIndex + 1} of {filteredEvents.length}</span>
               <div className="flex space-x-4 font-mono text-xs">
                 <span className="text-gray-400">Absolute: <span className="text-blue-400">{formatTimestamp(currentEvent?.timestamp || 0)}</span></span>
                 <span className="text-gray-400">Relative: <span className="text-green-400">{formatRelativeTime(currentEvent?.timestamp || 0)}</span></span>
               </div>
             </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
+            <div className="w-full bg-gray-700 rounded-md h-2">
               <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className="bg-blue-600 h-2 rounded-md transition-all duration-300"
                 style={{ width: `${((currentEventIndex + 1) / filteredEvents.length) * 100}%` }}
               />
             </div>
@@ -597,7 +597,7 @@ export default function EnhancedEventReplay({
 
           {/* Current Event Display */}
           {currentEvent && (
-            <div className={`border-2 rounded-lg p-4 mb-4 ${getEventColor(currentEvent)}`}>
+            <div className={`border-2 rounded-md p-4 mb-4 ${getEventColor(currentEvent)}`}>
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 mt-1">
                   {getEventIcon(currentEvent)}
@@ -623,22 +623,22 @@ export default function EnhancedEventReplay({
                       )}
                     </div>
                     <div className="text-right text-sm">
-                      <div className="text-gray-300 font-mono">{formatTimestamp(currentEvent.timestamp)}</div>
+                      <div className="text-gray-200 font-mono">{formatTimestamp(currentEvent.timestamp)}</div>
                       <div className="text-green-400 font-mono text-xs">{formatRelativeTime(currentEvent.timestamp)}</div>
                     </div>
                   </div>
-                  <div className="bg-gray-800 rounded p-3 border border-gray-700">
+                  <div className="bg-[#111111] rounded p-3 border border-gray-700">
                     <p className="text-gray-200">
                       {formatEventData(currentEvent)}
                     </p>
                   </div>
                   {currentEvent.data && Object.keys(currentEvent.data).length > 0 && (
-                    <details className="mt-3 bg-gray-800 rounded border border-gray-700">
-                      <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300 p-2">
-                        📊 Raw event data
+                    <details className="mt-3 bg-[#111111] rounded border border-gray-700">
+                      <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-200 p-2">
+                        Raw event data
                       </summary>
                       <div className="p-2">
-                        <pre className="text-xs text-gray-400 bg-gray-900 p-2 rounded border border-gray-700 overflow-x-auto font-mono">
+                        <pre className="text-xs text-gray-400 bg-black p-2 rounded border border-gray-700 overflow-x-auto font-mono">
                           {JSON.stringify(currentEvent.data, null, 2)}
                         </pre>
                       </div>
@@ -650,9 +650,9 @@ export default function EnhancedEventReplay({
           )}
 
           {/* Event Timeline */}
-          <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+          <div className="flex-1 bg-[#111111] border border-gray-700 rounded-md overflow-hidden">
             <div className="p-3 border-b border-gray-700">
-              <h4 className="text-sm font-medium text-gray-300">Event Timeline</h4>
+              <h4 className="text-sm font-medium text-gray-200">Event Timeline</h4>
             </div>
             <div 
               ref={timelineRef}
@@ -699,7 +699,7 @@ export default function EnhancedEventReplay({
 
         {/* Right Side: Video Player */}
         {videoBlobUrl && (
-          <div className="w-96 bg-gray-800 border border-gray-700 p-4 rounded-lg flex flex-col">
+          <div className="w-96 bg-[#111111] border border-gray-700 p-4 rounded-md flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white flex items-center">
                 <Video className="mr-2" size={20} />
@@ -713,7 +713,7 @@ export default function EnhancedEventReplay({
                   onChange={(e) => setSyncWithVideo(e.target.checked)}
                   className="rounded"
                 />
-                <label htmlFor="syncVideo" className="text-sm text-gray-300">
+                <label htmlFor="syncVideo" className="text-sm text-gray-200">
                   Sync
                 </label>
               </div>
@@ -727,8 +727,8 @@ export default function EnhancedEventReplay({
                 src={videoBlobUrl}
               />
               
-              <div className="mt-3 p-3 bg-gray-900 rounded border border-gray-700">
-                <p className="text-gray-300 text-sm mb-2">
+              <div className="mt-3 p-3 bg-black rounded border border-gray-700">
+                <p className="text-gray-200 text-sm mb-2">
                   Video syncs to match event timestamps when enabled.
                 </p>
                 {currentEvent && examStartTime && (

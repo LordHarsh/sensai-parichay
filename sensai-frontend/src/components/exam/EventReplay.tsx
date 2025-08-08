@@ -97,7 +97,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
       case 'wpm_tracking':
         return 'border-green-500 bg-green-900/20';
       default:
-        return 'border-gray-500 bg-gray-900/20';
+        return 'border-gray-500 bg-black/20';
     }
   };
 
@@ -124,7 +124,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
 
   if (!events.length) {
     return (
-      <div className="bg-gray-800 p-6 rounded-lg">
+      <div className="bg-[#111111] p-6 rounded-md">
         <h2 className="text-xl font-semibold mb-4 flex items-center">
           <Play className="mr-2" size={20} />
           Event Replay
@@ -140,18 +140,18 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
   const currentEvent = filteredEvents[currentEventIndex];
 
   return (
-    <div className="bg-gray-800 p-6 rounded-lg space-y-6">
+    <div className="bg-[#111111] p-6 rounded-md space-y-6">
       <h2 className="text-xl font-semibold mb-4 flex items-center">
         <Play className="mr-2" size={20} />
         Event Replay ({filteredEvents.length} events)
       </h2>
 
       {/* Controls */}
-      <div className="flex items-center justify-between bg-gray-700 p-4 rounded-lg">
+      <div className="flex items-center justify-between bg-gray-700 p-4 rounded-md">
         <div className="flex items-center space-x-4">
           <button
             onClick={handlePlay}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white transition-colors"
+            className="flex items-center space-x-2 hover:opacity-90 px-4 py-2 rounded transition-colors"
           >
             {isPlaying ? <Pause size={16} /> : <Play size={16} />}
             <span>{isPlaying ? 'Pause' : 'Play'}</span>
@@ -159,7 +159,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
           
           <button
             onClick={handleRestart}
-            className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded text-white transition-colors"
+            className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded transition-colors"
           >
             <RotateCcw size={16} />
             <span>Restart</span>
@@ -168,7 +168,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
 
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-gray-300">Speed:</label>
+            <label className="text-sm text-gray-200">Speed:</label>
             <select
               value={playbackSpeed}
               onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
@@ -182,7 +182,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
           </div>
 
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-gray-300">Filter:</label>
+            <label className="text-sm text-gray-200">Filter:</label>
             <select
               value={selectedEventType}
               onChange={(e) => setSelectedEventType(e.target.value)}
@@ -207,9 +207,9 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
             {currentEvent && new Date(currentEvent.timestamp).toLocaleTimeString()}
           </span>
         </div>
-        <div className="w-full bg-gray-700 rounded-full h-2">
+        <div className="w-full bg-gray-700 rounded-md h-2">
           <div 
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            className="bg-blue-600 h-2 rounded-md transition-all duration-300"
             style={{ width: `${((currentEventIndex + 1) / filteredEvents.length) * 100}%` }}
           ></div>
         </div>
@@ -228,7 +228,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
 
       {/* Current Event Display */}
       {currentEvent && (
-        <div className={`border rounded-lg p-4 ${getEventColor(currentEvent.type)}`}>
+        <div className={`border rounded-md p-4 ${getEventColor(currentEvent.type)}`}>
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center space-x-3">
               {getEventIcon(currentEvent.type)}
@@ -236,7 +236,7 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
                 <h3 className="font-semibold text-white">
                   {currentEvent.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </h3>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-gray-200">
                   {formatEventData(currentEvent)}
                 </p>
               </div>
@@ -248,10 +248,10 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
           
           {/* Detailed Event Data */}
           <details className="mt-3">
-            <summary className="text-sm text-gray-300 cursor-pointer hover:text-white">
+            <summary className="text-sm text-gray-200 cursor-pointer hover:text-white">
               View Raw Data
             </summary>
-            <pre className="mt-2 bg-gray-900 p-3 rounded text-xs text-gray-300 overflow-auto">
+            <pre className="mt-2 bg-black p-3 rounded text-xs text-gray-200 overflow-auto">
               {JSON.stringify(currentEvent.data, null, 2)}
             </pre>
           </details>

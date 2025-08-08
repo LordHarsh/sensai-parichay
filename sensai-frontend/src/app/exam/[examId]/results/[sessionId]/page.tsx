@@ -199,10 +199,10 @@ export default function ExamResultsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-300">Loading exam results...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-200">Loading exam results...</p>
         </div>
       </div>
     );
@@ -210,14 +210,14 @@ export default function ExamResultsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 text-xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-white mb-2">Error</h2>
-          <p className="text-gray-300 mb-4">{error}</p>
+          <h2 className="text-xl font-medium text-white mb-2">Error</h2>
+          <p className="text-gray-200 mb-4">{error}</p>
           <button
             onClick={() => router.push('/dashboard')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+            className="bg-white text-black hover:bg-gray-100 px-4 py-2 rounded-md"
           >
             Return to Dashboard
           </button>
@@ -228,9 +228,9 @@ export default function ExamResultsPage() {
 
   if (!results) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-300">No results found</p>
+          <p className="text-gray-200">No results found</p>
         </div>
       </div>
     );
@@ -241,41 +241,41 @@ export default function ExamResultsPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-900 py-8">
+    <div className="min-h-screen bg-black py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Exam Results</h1>
-          <h2 className="text-xl text-gray-300">{results.exam_title}</h2>
+          <h1 className="text-3xl font-light text-white mb-2">Exam Results</h1>
+          <h2 className="text-xl text-gray-200">{results.exam_title}</h2>
         </div>
 
         {/* Score Card */}
-        <div className="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700">
+        <div className="bg-[#111111] rounded-xl p-6 mb-8 border border-gray-700">
           <div className="text-center">
-            <div className="text-6xl font-bold mb-2">
+            <div className="text-6xl font-light mb-2">
               <span className={`${results.score >= 80 ? 'text-emerald-400' : results.score >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
                 {results.score}%
               </span>
             </div>
-            <p className="text-gray-300 text-lg">Final Score</p>
+            <p className="text-gray-200 text-lg">Final Score</p>
           </div>
         </div>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-2">Duration</h3>
-            <p className="text-2xl font-bold text-blue-400">{formatTime(timeTaken)}</p>
+          <div className="bg-[#111111] rounded-md p-6 border border-gray-700">
+            <h3 className="text-lg font-medium text-white mb-2">Duration</h3>
+            <p className="text-2xl font-light text-blue-400">{formatTime(timeTaken)}</p>
           </div>
           
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-2">Questions</h3>
-            <p className="text-2xl font-bold text-green-400">{results.questions?.length || 0}</p>
+          <div className="bg-[#111111] rounded-md p-6 border border-gray-700">
+            <h3 className="text-lg font-medium text-white mb-2">Questions</h3>
+            <p className="text-2xl font-light text-green-400">{results.questions?.length || 0}</p>
           </div>
           
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-2">Status</h3>
-            <p className={`text-2xl font-bold capitalize ${
+          <div className="bg-[#111111] rounded-md p-6 border border-gray-700">
+            <h3 className="text-lg font-medium text-white mb-2">Status</h3>
+            <p className={`text-2xl font-light capitalize ${
               results.status === 'completed' ? 'text-emerald-400' : 'text-yellow-400'
             }`}>
               {results.status}
@@ -284,24 +284,24 @@ export default function ExamResultsPage() {
         </div>
 
         {/* Session Details */}
-        <div className="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700">
-          <h3 className="text-xl font-semibold text-white mb-4">Session Details</h3>
+        <div className="bg-[#111111] rounded-xl p-6 mb-8 border border-gray-700">
+          <h3 className="text-xl font-medium text-white mb-4">Session Details</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p className="text-gray-400">Session ID</p>
+              <p className="text-gray-200">Session ID</p>
               <p className="text-white font-mono text-sm">{results.session_id}</p>
             </div>
             <div>
-              <p className="text-gray-400">Started</p>
+              <p className="text-gray-200">Started</p>
               <p className="text-white">{formatDate(results.start_time)}</p>
             </div>
             <div>
-              <p className="text-gray-400">Completed</p>
+              <p className="text-gray-200">Completed</p>
               <p className="text-white">{formatDate(results.end_time)}</p>
             </div>
             <div>
-              <p className="text-gray-400">Video Recording</p>
-              <p className={`${results.video_info?.chunk_count > 0 ? 'text-emerald-400' : 'text-gray-400'}`}>
+              <p className="text-gray-200">Video Recording</p>
+              <p className={`${results.video_info?.chunk_count > 0 ? 'text-emerald-400' : 'text-gray-200'}`}>
                 {results.video_info?.chunk_count > 0 ? 'Available' : 'Not available'}
               </p>
             </div>
@@ -310,13 +310,13 @@ export default function ExamResultsPage() {
 
         {/* Events Summary */}
         {results.events_summary && Object.keys(results.events_summary).length > 0 && (
-          <div className="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700">
-            <h3 className="text-xl font-semibold text-white mb-4">Activity Summary</h3>
+          <div className="bg-[#111111] rounded-xl p-6 mb-8 border border-gray-700">
+            <h3 className="text-xl font-medium text-white mb-4">Activity Summary</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(results.events_summary).map(([event, count]) => (
                 <div key={event} className="text-center">
-                  <p className="text-2xl font-bold text-blue-400">{count}</p>
-                  <p className="text-gray-400 text-sm capitalize">{event.replace('_', ' ')}</p>
+                  <p className="text-2xl font-light text-blue-400">{count}</p>
+                  <p className="text-gray-200 text-sm capitalize">{event.replace('_', ' ')}</p>
                 </div>
               ))}
             </div>
@@ -340,40 +340,40 @@ export default function ExamResultsPage() {
             <div className="flex flex-wrap border-b border-gray-700 mb-6">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`px-4 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors rounded-t-md border-b-2 ${
                   activeTab === 'overview'
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-gray-400 hover:text-white'
+                    ? 'text-blue-400 border-blue-400 bg-[#1A1A1A]'
+                    : 'text-gray-100 hover:text-white hover:bg-[#1A1A1A] border-transparent'
                 }`}
               >
                 Analytics Overview
               </button>
               <button
                 onClick={() => setActiveTab('analytics')}
-                className={`px-4 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors rounded-t-md border-b-2 ${
                   activeTab === 'analytics'
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-gray-400 hover:text-white'
+                    ? 'text-blue-400 border-blue-400 bg-[#1A1A1A]'
+                    : 'text-gray-100 hover:text-white hover:bg-[#1A1A1A] border-transparent'
                 }`}
               >
                 WPM Analytics
               </button>
               <button
                 onClick={() => setActiveTab('enhanced_replay')}
-                className={`px-4 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors rounded-t-md border-b-2 ${
                   activeTab === 'enhanced_replay'
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-gray-400 hover:text-white'
+                    ? 'text-blue-400 border-blue-400 bg-[#1A1A1A]'
+                    : 'text-gray-100 hover:text-white hover:bg-[#1A1A1A] border-transparent'
                 }`}
               >
-                📽️ Event Replay + Video
+                Event Replay + Video
               </button>
               <button
                 onClick={() => setActiveTab('replay')}
-                className={`px-4 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors rounded-t-md border-b-2 ${
                   activeTab === 'replay'
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-gray-400 hover:text-white'
+                    ? 'text-blue-400 border-blue-400 bg-[#1A1A1A]'
+                    : 'text-gray-100 hover:text-white hover:bg-[#1A1A1A] border-transparent'
                 }`}
               >
                 Event Replay (Classic)
@@ -389,10 +389,10 @@ export default function ExamResultsPage() {
                   setVideoLoading(true);
                   setVideoError(false);
                 }}
-                className={`px-4 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors rounded-t-md border-b-2 ${
                   activeTab === 'video'
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-gray-400 hover:text-white'
+                    ? 'text-blue-400 border-blue-400 bg-[#1A1A1A]'
+                    : 'text-gray-100 hover:text-white hover:bg-[#1A1A1A] border-transparent'
                 }`}
               >
                 Video Only
@@ -401,38 +401,38 @@ export default function ExamResultsPage() {
 
             {/* Tab Content */}
             {activeTab === 'overview' && (
-              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <h3 className="text-xl font-semibold text-white mb-4">Advanced Analytics Overview</h3>
+              <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
+                <h3 className="text-xl font-medium text-white mb-4">Advanced Analytics Overview</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-gray-700 p-4 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-blue-400">{analytics.total_events}</div>
-                    <div className="text-xs text-gray-400">Total Events</div>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                    <div className="text-2xl font-light text-blue-400">{analytics.total_events}</div>
+                    <div className="text-xs text-gray-200">Total Events</div>
                   </div>
-                  <div className="bg-gray-700 p-4 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-yellow-400">{analytics.flagged_events}</div>
-                    <div className="text-xs text-gray-400">Flagged Events</div>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                    <div className="text-2xl font-light text-yellow-400">{analytics.flagged_events}</div>
+                    <div className="text-xs text-gray-200">Flagged Events</div>
                   </div>
-                  <div className="bg-gray-700 p-4 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-red-400">{analytics.high_priority_events}</div>
-                    <div className="text-xs text-gray-400">High Priority</div>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                    <div className="text-2xl font-light text-red-400">{analytics.high_priority_events}</div>
+                    <div className="text-xs text-gray-200">High Priority</div>
                   </div>
-                  <div className="bg-gray-700 p-4 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-purple-400">{Math.round(analytics.suspicious_activity_score * 100)}%</div>
-                    <div className="text-xs text-gray-400">Suspicion Score</div>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                    <div className="text-2xl font-light text-purple-400">{Math.round(analytics.suspicious_activity_score * 100)}%</div>
+                    <div className="text-xs text-gray-200">Suspicion Score</div>
                   </div>
                 </div>
                 
                 {/* Detailed Analytics Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className="bg-gray-700 p-4 rounded-lg">
-                    <h4 className="font-semibold text-white mb-3">Behavioral Analysis</h4>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md">
+                    <h4 className="font-medium text-white mb-3">Behavioral Analysis</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">Confidence Score:</span>
+                        <span className="text-gray-200">Confidence Score:</span>
                         <span className="text-green-400">{Math.round(analytics.average_confidence_score * 100)}%</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">Risk Level:</span>
+                        <span className="text-gray-200">Risk Level:</span>
                         <span className={analytics.suspicious_activity_score > 0.7 ? 'text-red-400' : analytics.suspicious_activity_score > 0.3 ? 'text-yellow-400' : 'text-green-400'}>
                           {analytics.suspicious_activity_score > 0.7 ? 'High' : analytics.suspicious_activity_score > 0.3 ? 'Medium' : 'Low'}
                         </span>
@@ -440,26 +440,26 @@ export default function ExamResultsPage() {
                     </div>
                   </div>
                   
-                  <div className="bg-gray-700 p-4 rounded-lg">
-                    <h4 className="font-semibold text-white mb-3">Event Distribution</h4>
+                  <div className="bg-[#1A1A1A] p-4 rounded-md">
+                    <h4 className="font-medium text-white mb-3">Event Distribution</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">Normal Events:</span>
+                        <span className="text-gray-200">Normal Events:</span>
                         <span className="text-blue-400">{analytics.total_events - analytics.flagged_events}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">Suspicious Events:</span>
+                        <span className="text-gray-200">Suspicious Events:</span>
                         <span className="text-orange-400">{analytics.flagged_events - analytics.high_priority_events}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-300">Critical Events:</span>
+                        <span className="text-gray-200">Critical Events:</span>
                         <span className="text-red-400">{analytics.high_priority_events}</span>
                       </div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="text-sm text-gray-300">
+                <div className="text-sm text-gray-200">
                   <p>This student's session has been analyzed for suspicious behavior patterns using advanced machine learning algorithms.</p>
                   <p className="mt-2">
                     <strong>Analysis Summary:</strong> The system monitors typing patterns, content similarity, paste behavior, and writing style changes to detect potential cheating attempts.
@@ -515,31 +515,31 @@ export default function ExamResultsPage() {
             )}
 
             {activeTab === 'video' && (
-              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <h3 className="text-xl font-semibold text-white mb-4">Exam Video Recording</h3>
+              <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
+                <h3 className="text-xl font-medium text-white mb-4">Exam Video Recording</h3>
                 {results.video_info?.chunk_count > 0 ? (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      <div className="bg-gray-700 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-blue-400">{results.video_info.chunk_count}</div>
-                        <div className="text-xs text-gray-400">Video Chunks</div>
+                      <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                        <div className="text-2xl font-light text-blue-400">{results.video_info.chunk_count}</div>
+                        <div className="text-xs text-gray-200">Video Chunks</div>
                       </div>
-                      <div className="bg-gray-700 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-green-400">{Math.round(results.video_info.total_size / 1024 / 1024)}MB</div>
-                        <div className="text-xs text-gray-400">Total Size</div>
+                      <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                        <div className="text-2xl font-light text-green-400">{Math.round(results.video_info.total_size / 1024 / 1024)}MB</div>
+                        <div className="text-xs text-gray-200">Total Size</div>
                       </div>
-                      <div className="bg-gray-700 p-4 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-purple-400">Available</div>
-                        <div className="text-xs text-gray-400">Status</div>
+                      <div className="bg-[#1A1A1A] p-4 rounded-md text-center">
+                        <div className="text-2xl font-light text-purple-400">Available</div>
+                        <div className="text-xs text-gray-200">Status</div>
                       </div>
                     </div>
                     
-                    <div className="bg-gray-900 rounded-lg p-4 relative">
+                    <div className="bg-black rounded-md p-4 relative">
                       {videoLoading && !videoError && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-lg">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black rounded-md">
                           <div className="text-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                            <p className="text-gray-400 text-sm">Loading video...</p>
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mx-auto mb-2"></div>
+                            <p className="text-gray-200 text-sm">Loading video...</p>
                           </div>
                         </div>
                       )}
@@ -549,11 +549,11 @@ export default function ExamResultsPage() {
                           <svg className="w-16 h-16 mx-auto mb-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          <p className="text-lg font-semibold mb-2">Video Playback Error</p>
+                          <p className="text-lg font-medium mb-2">Video Playback Error</p>
                           <p className="text-sm mb-4">Unable to load video file. The video may be corrupted or the server is not accessible.</p>
                           <a 
                             href={`http://localhost:8000/api/exam/${examId}/video/${sessionId}?download=true`}
-                            className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
                           >
                             Try Download Instead
                           </a>
@@ -563,7 +563,7 @@ export default function ExamResultsPage() {
                           ref={videoRef}
                           key={videoBlobUrl} // Force re-render when blob URL changes
                           controls 
-                          className="w-full h-auto max-h-96 rounded-lg"
+                          className="w-full h-auto max-h-96 rounded-md"
                           preload="metadata"
                           style={{ backgroundColor: '#1f2937' }}
                           src={videoBlobUrl || undefined}
@@ -586,11 +586,11 @@ export default function ExamResultsPage() {
                           }}
                         >
                           <div className="text-center py-8 text-red-400">
-                            <p className="text-lg font-semibold mb-2">Browser Not Supported</p>
+                            <p className="text-lg font-medium mb-2">Browser Not Supported</p>
                             <p className="text-sm">Your browser does not support WebM video playback.</p>
                             <a 
                               href={`http://localhost:8000/api/exam/${examId}/video/${sessionId}?download=true`}
-                              className="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              className="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
                             >
                               Download Video
                             </a>
@@ -603,14 +603,14 @@ export default function ExamResultsPage() {
                           onClick={() => {
                             if (videoRef.current) videoRef.current.currentTime = 0;
                           }}
-                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
+                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition"
                         >
                           Restart
                         </button>
                         <a 
                           href={`http://localhost:8000/api/exam/${examId}/video/${sessionId}?download=true`}
                           download
-                          className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition"
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition"
                         >
                           Download Video
                         </a>
@@ -627,22 +627,22 @@ export default function ExamResultsPage() {
                               setVideoSpeed(newSpeed);
                             }
                           }}
-                          className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition"
+                          className="px-3 py-1 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition"
                         >
                           Speed: {videoSpeed}x
                         </button>
                       </div>
                       
-                      <p className="text-gray-400 text-sm mt-3">
+                      <p className="text-gray-200 text-sm mt-3">
                         This video recording captures the entire exam session for proctoring purposes. 
                         The video is in WebM format and should play in most modern browsers.
                         Use the controls above to navigate through the video.
                       </p>
                       
                       <div className="mt-2 text-xs text-gray-500">
-                        <p>• WebM format with VP8/VP9 video codec</p>
-                        <p>• Compatible with Chrome, Firefox, Safari (14+), Edge</p>
-                        <p>• Use download option if playback issues occur</p>
+                        <p>WebM format with VP8/VP9 video codec</p>
+                        <p>Compatible with Chrome, Firefox, Safari (14+), Edge</p>
+                        <p>Use download option if playback issues occur</p>
                       </div>
                     </div>
                   </div>
@@ -651,14 +651,14 @@ export default function ExamResultsPage() {
                     <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <h4 className="text-lg font-semibold text-gray-300 mb-2">No Video Recording Available</h4>
-                    <p className="text-gray-400">
+                    <h4 className="text-lg font-medium text-gray-200 mb-2">No Video Recording Available</h4>
+                    <p className="text-gray-200">
                       No video was recorded for this exam session. This could be due to:
                     </p>
-                    <ul className="text-gray-400 text-sm mt-2 space-y-1">
-                      <li>• Camera access was not granted</li>
-                      <li>• Technical issues during the exam</li>
-                      <li>• Video recording was disabled for this exam</li>
+                    <ul className="text-gray-200 text-sm mt-2 space-y-1">
+                      <li>Camera access was not granted</li>
+                      <li>Technical issues during the exam</li>
+                      <li>Video recording was disabled for this exam</li>
                     </ul>
                   </div>
                 )}
@@ -669,15 +669,15 @@ export default function ExamResultsPage() {
 
         {/* Question Review */}
         {results.questions && results.questions.length > 0 && (
-          <div className="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700">
-            <h3 className="text-xl font-semibold text-white mb-6">Question Review</h3>
+          <div className="bg-[#111111] rounded-xl p-6 mb-8 border border-gray-700">
+            <h3 className="text-xl font-medium text-white mb-6">Question Review</h3>
             <div className="space-y-6">
               {results.questions.map((question: any, index: number) => {
                 const userAnswer = results.answers[question.id] || '';
                 const isCorrect = question.type === 'multiple_choice' && userAnswer === question.correct_answer;
                 
                 return (
-                  <div key={question.id} className="border border-gray-700 rounded-lg p-4">
+                  <div key={question.id} className="border border-gray-700 rounded-md p-4">
                     <div className="flex items-start justify-between mb-3">
                       <h4 className="text-white font-medium">Question {index + 1}</h4>
                       {question.type === 'multiple_choice' && (
@@ -689,28 +689,28 @@ export default function ExamResultsPage() {
                       )}
                     </div>
                     
-                    <p className="text-gray-300 mb-3">{question.question}</p>
+                    <p className="text-gray-200 mb-3">{question.question}</p>
                     
                     {question.options && (
                       <div className="mb-3">
-                        <p className="text-gray-400 text-sm mb-2">Options:</p>
+                        <p className="text-gray-100 text-sm mb-2 font-medium">Options:</p>
                         <div className="space-y-1">
                           {question.options.map((option: any, optIndex: number) => {
                             const optionLabel = String.fromCharCode(65 + optIndex);
                             const optionText = typeof option === 'string' ? option : option.text;
                             const optionId = typeof option === 'string' ? optionLabel : option.id;
                             return (
-                              <div key={optIndex} className={`p-2 rounded text-sm ${
-                                userAnswer === optionId ? 'bg-blue-900/30 border border-blue-700' : 'bg-gray-700'
+                              <div key={optIndex} className={`p-3 rounded-md text-sm border ${
+                                userAnswer === optionId ? 'bg-blue-900/30 border-blue-600 text-white' : 'bg-[#1A1A1A] border-gray-600 text-gray-100'
                               } ${
-                                question.correct_answer === optionId ? 'border-emerald-600 bg-emerald-900/20' : ''
+                                question.correct_answer === optionId ? 'border-emerald-500 bg-emerald-900/30 text-white' : ''
                               }`}>
-                                <span className="font-medium">{optionLabel}.</span> {optionText}
+                                <span className="font-medium text-white">{optionLabel}.</span> <span className="text-gray-100">{optionText}</span>
                                 {question.correct_answer === optionId && (
-                                  <span className="text-emerald-400 ml-2">(Correct)</span>
+                                  <span className="text-emerald-300 ml-2 font-medium">(Correct)</span>
                                 )}
                                 {userAnswer === optionId && userAnswer !== question.correct_answer && (
-                                  <span className="text-blue-400 ml-2">(Your answer)</span>
+                                  <span className="text-blue-300 ml-2 font-medium">(Your answer)</span>
                                 )}
                               </div>
                             );
@@ -721,9 +721,9 @@ export default function ExamResultsPage() {
                     
                     {userAnswer && question.type !== 'multiple_choice' && (
                       <div className="mt-3">
-                        <p className="text-gray-400 text-sm mb-2">Your Answer:</p>
-                        <div className="bg-gray-700 p-3 rounded">
-                          <p className="text-white whitespace-pre-wrap">{userAnswer}</p>
+                        <p className="text-gray-100 text-sm mb-2 font-medium">Your Answer:</p>
+                        <div className="bg-[#1A1A1A] border border-gray-600 p-3 rounded-md">
+                          <p className="text-gray-100 whitespace-pre-wrap">{userAnswer}</p>
                         </div>
                       </div>
                     )}
@@ -738,7 +738,7 @@ export default function ExamResultsPage() {
         <div className="text-center">
           <button
             onClick={() => router.push('/exam')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+            className="bg-white text-black hover:bg-gray-100 px-6 py-3 rounded-md font-medium transition-colors"
           >
             Return to Dashboard
           </button>

@@ -64,7 +64,7 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
     websocket.sendEvent(event);
 
     if (lookingAway) {
-      console.log(`📊 MediaPipe Gaze: Looking away detected at (${event.data.gaze_x}, ${event.data.gaze_y}) with confidence ${gazeData.confidence.toFixed(2)}`);
+      console.log(`MediaPipe Gaze: Looking away detected at (${event.data.gaze_x}, ${event.data.gaze_y}) with confidence ${gazeData.confidence.toFixed(2)}`);
     }
   }, [websocket]);
 
@@ -234,7 +234,7 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
           setIsLookingAway(false);
           // Send event when returning to look at screen (end of violation)
           logGazeEvent(gazePos, now, false);
-          console.log(`✅ MediaPipe: Exam taker is looking back at screen (was away for ${Math.round(awayDuration / 1000)}s)`);
+          console.log(`MediaPipe: Exam taker is looking back at screen (was away for ${Math.round(awayDuration / 1000)}s)`);
         }
         
         gazeAwayStartTime.current = null;
@@ -414,9 +414,9 @@ const MediaPipeGazeTracker: React.FC<MediaPipeGazeTrackerProps> = ({ websocket, 
 
     return (
       <div className="fixed top-20 right-4 z-50">
-        <div className={`px-3 py-1 rounded-full text-white text-xs font-medium ${color} shadow-lg`}>
+        <div className={`px-3 py-1 rounded-md text-white text-xs font-medium ${color} shadow-lg`}>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isLookingAway ? 'animate-pulse' : ''} bg-white`}></div>
+            <div className={`w-2 h-2 rounded-md ${isLookingAway ? 'animate-pulse' : ''} bg-white`}></div>
             MediaPipe Gaze: {status}
           </div>
         </div>
