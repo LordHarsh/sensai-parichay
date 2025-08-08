@@ -774,6 +774,17 @@ class CreateExamRequest(BaseModel):
     role: str = "teacher"
 
 
+class GenerateAIExamRequest(BaseModel):
+    title: str
+    description: str
+    max_questions: int = 10
+    duration: Optional[int] = None  # Auto-calculated based on questions if not provided
+    settings: Dict = {}
+    monitoring: Dict = {}
+    org_id: Optional[int] = None
+    course_id: Optional[int] = None  # Generate exam based on course content
+
+
 class ExamSubmissionRequest(BaseModel):
     answers: Dict[str, str]
     time_taken: int

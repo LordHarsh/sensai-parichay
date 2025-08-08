@@ -9,6 +9,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from api.utils.logging import logger
+from api.db.course import get_course as get_course_from_db
 
 # Test log message
 logger.info("Logging system initialized")
@@ -64,6 +65,56 @@ async def run_llm_with_instructor(
         store=True,
         **model_kwargs,
     )
+
+
+async def format_course_details_for_ai(course_id: int) -> str:
+    """
+    Fetch course details and format them for AI prompt use
+    
+    Args:
+        course_id: Course ID to fetch details for
+        
+    Returns:
+        Formatted string with course information for AI
+    """
+    try:
+        course = await get_course_from_db(course_id, only_published=True)
+        if not course:
+            raise Exception(f"Course with ID {course_id} not found")
+        
+        # Build comprehensive course information
+        course_info = []
+        course_info.append(f"**COURSE NAME**: {course['name']}")
+        
+        # Add milestones and tasks
+        if course.get('milestones'):
+            course_info.append("\n**COURSE STRUCTURE**:")
+            for milestone in course['milestones']:
+                milestone_name = milestone.get('name', 'Unnamed Milestone')
+                course_info.append(f"\n📚 **{milestone_name}**")
+                
+                if milestone.get('tasks'):
+                    for task in milestone['tasks']:
+                        task_title = task.get('title', 'Untitled Task')
+                        task_type = task.get('type', 'unknown')
+                        course_info.append(f"  • {task_title} ({task_type})")
+                        if task.get('num_questions') and task_type == 'QUIZ':
+                            course_info.append(f"    [{task['num_questions']} questions]")
+                else:
+                    course_info.append("  • No tasks available in this milestone")
+        else:
+            course_info.append("\n**COURSE STRUCTURE**: No structured milestones available")
+        
+        # Add summary
+        course_info.append("\n**COURSE SCOPE**: This course covers comprehensive topics organized in structured milestones with various learning activities including quizzes, exercises, and projects.")
+        
+        formatted_course = "\n".join(course_info)
+        logger.info(f"Formatted course details for course ID {course_id} ({len(formatted_course)} characters)")
+        return formatted_course
+        
+    except Exception as e:
+        logger.error(f"Error formatting course details for course {course_id}: {str(e)}")
+        raise Exception(f"Failed to fetch course details: {str(e)}")
 
 
 @backoff.on_exception(backoff.expo, Exception, max_tries=5, factor=2)
@@ -385,3 +436,279 @@ Provide a comprehensive analysis with strengths, weaknesses, and improvement sug
         "analysis": completion.choices[0].message.content,
         "model_used": model
     }
+
+
+async def generate_exam_questions_with_openai(
+    api_key: str,
+    title: str,
+    description: str,
+    max_questions: int = 10,
+    model: str = "gpt-4o",
+    course_id: int = None
+) -> dict:
+    """
+    Generate exam questions using OpenAI GPT-4o
+    
+    Args:
+        api_key: OpenAI API key
+        title: Exam title
+        description: Exam description/topic
+        max_questions: Maximum number of questions to generate
+        model: OpenAI model to use
+        course_id: Optional course ID to base exam on course content
+        
+    Returns:
+        Dictionary with generated questions and metadata
+    """
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Get course details if course_id is provided
+        course_context = ""
+        if course_id:
+            try:
+                course_context = await format_course_details_for_ai(course_id)
+                # Update description to include course context
+                description = f"{description}\n\nBased on the course content detailed below:\n{course_context}"
+            except Exception as e:
+                logger.warning(f"Failed to fetch course details for course {course_id}: {e}")
+                # Continue without course context
+        
+        # Create a detailed prompt for question generation
+        generation_prompt = f"""
+You are an expert educational content creator. Generate a comprehensive exam based on the following requirements:
+
+EXAM DETAILS:
+- Title: {title}
+- Description: {description}
+- Number of Questions: {max_questions}
+
+{'COURSE-BASED EXAM: This exam should be specifically designed based on the course structure, milestones, and tasks provided in the description above. Create questions that align with the learning objectives and content covered in the course.' if course_id else 'TOPIC-BASED EXAM: This exam should comprehensively cover the topic described above.'}
+
+Please create {max_questions} high-quality exam questions that thoroughly assess knowledge on the given topic{'s and course content' if course_id else ''}. Include a variety of question types and difficulty levels.
+
+Provide your response in the following JSON format:
+
+{{
+    "questions": [
+        {{
+            "id": "q1",
+            "type": "multiple_choice",
+            "question": "Your question text here",
+            "options": [
+                "Option A",
+                "Option B", 
+                "Option C",
+                "Option D"
+            ],
+            "correct_answer": "Option A",
+            "points": 2
+        }},
+        {{
+            "id": "q2",
+            "type": "text",
+            "question": "Short answer question here",
+            "correct_answer": "Expected answer",
+            "points": 3
+        }},
+        {{
+            "id": "q3",
+            "type": "essay",
+            "question": "Essay question requiring detailed response",
+            "points": 10
+        }},
+        {{
+            "id": "q4",
+            "type": "code",
+            "question": "Programming question here",
+            "correct_answer": "// Sample solution code",
+            "points": 15,
+            "metadata": {{"language": "javascript"}}
+        }}
+    ],
+    "exam_metadata": {{
+        "suggested_duration": 60,
+        "difficulty_level": "Medium",
+        "topics_covered": ["Topic 1", "Topic 2", "Topic 3"],
+        "question_distribution": {{
+            "multiple_choice": 4,
+            "text": 3,
+            "essay": 2,
+            "code": 1
+        }},
+        "total_points": 45
+    }}
+}}
+
+GUIDELINES:
+1. Create diverse question types: multiple_choice, text, essay, and code (if relevant to the topic)
+2. Ensure questions are clear, specific, and well-structured
+3. For multiple choice: provide 4 options with only one correct answer
+4. For text questions: expect concise but complete answers
+5. For essay questions: require analytical or explanatory responses
+6. For code questions: include realistic programming challenges (use javascript, python, or other relevant languages)
+7. Assign appropriate point values based on difficulty and time required
+8. Cover different aspects and difficulty levels of the topic
+9. Make questions educational and assessment-worthy
+10. Ensure all questions are directly related to the exam topic
+{'11. COURSE-ALIGNED QUESTIONS: When course content is provided, create questions that specifically assess the milestones, tasks, and learning objectives covered in the course structure. Include questions that span across different milestones and difficulty levels appropriate for the course content.' if course_id else ''}
+
+Make sure each question ID is unique (q1, q2, q3, etc.) and that the JSON is properly formatted.
+"""
+
+        logger.info("Generating exam questions with OpenAI...")
+        
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert educational content creator specializing in creating comprehensive, fair, and educationally valuable exam questions. Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": generation_prompt
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,  # Slightly higher temperature for creativity
+        )
+        
+        logger.info(f"OpenAI completion received. Usage: {completion.usage}")
+        
+        # Check if we got a valid response
+        if not completion.choices or not completion.choices[0].message.content:
+            logger.error("OpenAI returned empty response or no choices")
+            raise Exception("OpenAI returned empty response")
+        
+        content = completion.choices[0].message.content.strip()
+        if not content:
+            logger.error("OpenAI returned empty content")
+            raise Exception("OpenAI returned empty content")
+        
+        logger.info(f"OpenAI response content length: {len(content)}")
+        
+        # Parse the JSON response
+        try:
+            result = json.loads(content)
+            logger.info("Successfully parsed OpenAI response as JSON")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.error(f"Raw content that failed to parse: {repr(content)}")
+            raise Exception(f"OpenAI response is not valid JSON: {str(e)}")
+        
+        # Validate the structure
+        if "questions" not in result:
+            raise Exception("Generated content missing 'questions' field")
+        
+        questions = result["questions"]
+        if not isinstance(questions, list) or len(questions) == 0:
+            raise Exception("No questions generated")
+        
+        # Add metadata
+        result["generation_metadata"] = {
+            "model_used": model,
+            "generation_timestamp": json.loads(json.dumps({"timestamp": "now"}, default=str)),
+            "total_tokens": completion.usage.total_tokens if completion.usage else 0,
+            "questions_generated": len(questions),
+            "course_based": course_id is not None,
+            "course_id": course_id
+        }
+        
+        logger.info(f"Generated {len(questions)} exam questions successfully")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in exam question generation: {str(e)}")
+        raise Exception(f"Failed to generate exam questions: {str(e)}")
+
+
+async def generate_exam_description_with_openai(
+    api_key: str,
+    title: str,
+    model: str = "gpt-4o",
+    course_id: int = None
+) -> str:
+    """
+    Generate exam description based on the title using OpenAI GPT-4o
+    
+    Args:
+        api_key: OpenAI API key
+        title: Exam title to base the description on
+        model: OpenAI model to use
+        course_id: Optional course ID to base description on course content
+        
+    Returns:
+        Generated description string
+    """
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Get course details if course_id is provided
+        course_context = ""
+        if course_id:
+            try:
+                course_context = await format_course_details_for_ai(course_id)
+            except Exception as e:
+                logger.warning(f"Failed to fetch course details for course {course_id}: {e}")
+                # Continue without course context
+        
+        # Create a prompt for description generation
+        description_prompt = f"""
+You are an expert educational content creator. Based on the exam title provided{'and course content' if course_id else ''}, generate a comprehensive and professional exam description.
+
+EXAM TITLE: "{title}"
+
+{f'COURSE CONTEXT:\n{course_context}\n' if course_context else ''}
+
+Generate a detailed description that:
+1. Clearly explains what topics and concepts will be covered
+2. Describes the scope and depth of the assessment
+3. Mentions the types of skills being evaluated
+4. Sets appropriate expectations for students
+5. Is professional and educational in tone
+6. Is 2-4 sentences long
+7. Is specific to the subject matter indicated by the title
+{f'8. COURSE-ALIGNED: When course content is provided, ensure the description reflects the specific milestones, tasks, and learning objectives covered in the course structure.' if course_id else ''}
+
+The description should help students understand what to expect and how to prepare for the exam.
+
+Return only the description text, without quotes or additional formatting.
+"""
+
+        logger.info("Generating exam description with OpenAI...")
+        
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert educational content creator specializing in creating clear, comprehensive exam descriptions that help students understand what to expect."
+                },
+                {
+                    "role": "user",
+                    "content": description_prompt
+                }
+            ],
+            temperature=0.5,  # Balanced creativity and consistency
+            max_tokens=300  # Limit description length
+        )
+        
+        logger.info(f"OpenAI completion received. Usage: {completion.usage}")
+        
+        # Check if we got a valid response
+        if not completion.choices or not completion.choices[0].message.content:
+            logger.error("OpenAI returned empty response or no choices")
+            raise Exception("OpenAI returned empty response")
+        
+        content = completion.choices[0].message.content.strip()
+        if not content:
+            logger.error("OpenAI returned empty content")
+            raise Exception("OpenAI returned empty content")
+        
+        logger.info(f"Generated exam description successfully")
+        return content
+        
+    except Exception as e:
+        logger.error(f"Error in exam description generation: {str(e)}")
+        raise Exception(f"Failed to generate exam description: {str(e)}")
