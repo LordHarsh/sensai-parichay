@@ -50,6 +50,10 @@ export default function ExamResultsPage() {
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [creatingCourse, setCreatingCourse] = useState(false);
+  const [courseData, setCourseData] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -195,6 +199,157 @@ export default function ExamResultsPage() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const generateReport = async () => {
+    if (!session?.user?.id && !session?.user?.email) {
+      alert('Please log in to generate a report');
+      return;
+    }
+
+    try {
+      setGeneratingReport(true);
+      
+      const response = await fetch(`http://localhost:8000/api/exam/generate-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': session?.user?.id || session?.user?.email || '',
+        },
+        body: JSON.stringify({
+          exam_id: examId,
+          session_id: sessionId,
+          report_type: 'comprehensive',
+          include_analytics: true,
+          include_questions: true,
+          include_video_info: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Server returned ${response.status}`);
+      }
+
+      // Parse JSON response
+      const responseData = await response.json();
+      
+      if (!responseData.success) {
+        throw new Error('Report generation failed');
+      }
+
+      // Store ALL generation data in state (available for use elsewhere in the app)
+      setReportData(responseData.generation_data);
+      
+      // Log the complete data for debugging/development (optional)
+      console.log('Complete Report Generation Data:', responseData.generation_data);
+
+      // Convert base64 to blob and download PDF
+      const pdfBlob = new Blob([
+        Uint8Array.from(atob(responseData.pdf_data), c => c.charCodeAt(0))
+      ], { type: 'application/pdf' });
+      
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = responseData.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert(`Failed to generate report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
+  const createCustomCourse = async () => {
+    if (!session?.user?.id && !session?.user?.email) {
+      alert('Please log in to create a custom course');
+      return;
+    }
+
+    if (!reportData) {
+      alert('Please generate a report first');
+      return;
+    }
+
+    try {
+      setCreatingCourse(true);
+      
+      const response = await fetch(`http://localhost:8000/api/exam/create-custom-course`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': session?.user?.id || session?.user?.email || '',
+        },
+        body: JSON.stringify({
+          exam_id: examId,
+          session_id: sessionId,
+          user_answers: results?.answers || {},
+          report_data: reportData,
+          create_full_course: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Server returned ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      
+      if (!responseData.success) {
+        throw new Error('Course creation failed');
+      }
+
+      // Store course data
+      setCourseData(responseData);
+      console.log('Personalized Course Creation Started:', responseData);
+      
+      if (responseData.course_created) {
+        // Store course data for potential future use
+        setCourseData(responseData);
+        
+        // Directly redirect to dashboard to see course creation progress
+        console.log('Personalized course created successfully:', {
+          courseName: responseData.course_name,
+          courseId: responseData.course_id,
+          weakAreas: responseData.weak_areas_targeted,
+          strengths: responseData.strengths_leveraged,
+          jobUuid: responseData.job_uuid
+        });
+        
+        // Redirect to the school page with the course using correct organization slug
+        const orgSlug = responseData.organization?.slug || 'sensai-learning';
+        const courseId = responseData.course_id;
+        const cohortId = responseData.cohort_id;
+        
+        // Use the correct routing pattern: /school/{organization-slug}?course_id={course_id}&cohort_id={cohort_id}
+        if (cohortId) {
+          router.push(`/school/${orgSlug}?course_id=${courseId}&cohort_id=${cohortId}`);
+        } else {
+          // Fallback without cohort_id if creation failed
+          router.push(`/school/${orgSlug}?course_id=${courseId}`);
+        }
+        
+      } else {
+        // Fallback to recommendation display (minimal alert)
+        const courseData = responseData.course_data;
+        console.log('Course recommendation generated:', courseData);
+        
+        alert(`Course Recommendation: ${courseData.course_name}`);
+      }
+      
+    } catch (error) {
+      console.error('Error creating personalized course:', error);
+      alert(`Failed to create personalized course: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setCreatingCourse(false);
+    }
   };
 
   if (isLoading) {
@@ -734,8 +889,49 @@ export default function ExamResultsPage() {
           </div>
         )}
 
+
         {/* Action Buttons */}
-        <div className="text-center">
+        <div className="text-center space-x-4">
+          <button
+            onClick={generateReport}
+            disabled={generatingReport}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors inline-flex items-center"
+          >
+            {generatingReport ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Generating Report...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Generate Report
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={createCustomCourse}
+            disabled={creatingCourse || !reportData}
+            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors inline-flex items-center"
+          >
+            {creatingCourse ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Creating Personalized Course...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Create Personalized Course
+              </>
+            )}
+          </button>
+          
           <button
             onClick={() => router.push('/exam')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"

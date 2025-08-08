@@ -937,6 +937,27 @@ async def add_generated_quiz(task_id: int, task_details: Dict):
         question["is_feedback_shown"] = (
             question["response_type"] != TaskAIResponseType.EXAM
         )
+        # Generate title from blocks content or use default
+        if not question.get("title"):
+            if question.get("blocks") and len(question["blocks"]) > 0:
+                # Extract text from first block as title
+                first_block = question["blocks"][0]
+                if isinstance(first_block, dict) and first_block.get("content"):
+                    # Get text from first content item
+                    content = first_block["content"]
+                    if isinstance(content, list) and len(content) > 0:
+                        first_content = content[0]
+                        if isinstance(first_content, dict) and first_content.get("text"):
+                            # Use first 100 characters as title
+                            question["title"] = first_content["text"][:100]
+                        else:
+                            question["title"] = "Generated Question"
+                    else:
+                        question["title"] = "Generated Question"
+                else:
+                    question["title"] = "Generated Question"
+            else:
+                question["title"] = "Generated Question"
         if question.get("scorecard"):
             question["scorecard"]["id"] = current_scorecard_index
             current_scorecard_index += 1
