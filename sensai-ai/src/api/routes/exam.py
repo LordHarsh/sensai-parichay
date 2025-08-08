@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, HTTPException, Depends, Query, Header, BackgroundTasks
 from fastapi.responses import FileResponse
 from api.db import (
     exams_table_name,
@@ -14,6 +14,7 @@ import os
 import tempfile
 import base64
 from datetime import datetime
+import asyncio
 import weasyprint
 from jinja2 import Template
 import matplotlib
@@ -34,11 +35,23 @@ from api.models import (
 )
 from pydantic import BaseModel
 from api.utils.db import get_new_db_connection
+from api.db.course import (
+    create_course,
+    store_course_generation_request,
+    get_org_id_for_course
+)
+from api.db.user import get_user_organizations
+from api.db.cohort import create_cohort, add_members_to_cohort, add_course_to_cohorts
+from api.routes.ai import _generate_course_structure
+from api.models import GenerateCourseJobStatus
 from api.utils.event_scoring import EventScorer
 from api.config import (
     exams_table_name,
     exam_sessions_table_name,
-    exam_events_table_name
+    exam_events_table_name,
+    users_table_name,
+    organizations_table_name,
+    user_organizations_table_name
 )
 
 router = APIRouter(prefix="/exam", tags=["exam"])
@@ -1041,6 +1054,15 @@ class ReportGenerationRequest(BaseModel):
     include_video_info: bool = True
 
 
+class CustomCourseRequest(BaseModel):
+    exam_id: str
+    session_id: str
+    user_answers: dict
+    report_data: dict
+    create_full_course: bool = True  # New field to enable full course creation
+    course_name_override: Optional[str] = None  # Optional custom course name
+
+
 @router.post("/generate-report", response_model=dict)
 async def generate_report(
     request: ReportGenerationRequest,
@@ -1148,6 +1170,21 @@ async def generate_report(
             # Generate charts
             charts = generate_charts(evaluation_data)
             
+            # Calculate grade gradient for PDF
+            overall_perf = evaluation_data.get('overall_performance', {})
+            grade_level = overall_perf.get('grade_level', 'C')
+            
+            if grade_level == 'A' or score >= 90:
+                grade_gradient = "linear-gradient(135deg, #059669 0%, #10b981 100%)"
+            elif grade_level == 'B' or score >= 80:
+                grade_gradient = "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)"
+            elif grade_level == 'C' or score >= 70:
+                grade_gradient = "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)" 
+            elif grade_level == 'D' or score >= 60:
+                grade_gradient = "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)"
+            else:
+                grade_gradient = "linear-gradient(135deg, #7c2d12 0%, #dc2626 100%)"
+            
             # Generate PDF report
             pdf_path = await create_pdf_report(
                 exam_title,
@@ -1162,16 +1199,109 @@ async def generate_report(
                 analytics_data,
                 evaluation_data,
                 charts,
-                request
+                request,
+                grade_gradient
             )
             
-            # Return PDF file
-            return FileResponse(
-                pdf_path,
-                media_type='application/pdf',
-                filename=f"SENSAI_Report_{exam_title}_{user_display}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                headers={"Content-Disposition": f"attachment; filename=SENSAI_Report_{exam_title}_{user_display}.pdf"}
-            )
+            # Read PDF content for base64 encoding
+            with open(pdf_path, 'rb') as pdf_file:
+                pdf_content = pdf_file.read()
+                pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+            
+            # Clean up temporary file
+            os.unlink(pdf_path)
+            
+            # Convert analytics_data from Pydantic model to dict if it exists
+            analytics_dict = None
+            if analytics_data:
+                try:
+                    # Convert Pydantic model to dict
+                    analytics_dict = analytics_data.dict() if hasattr(analytics_data, 'dict') else analytics_data
+                except:
+                    # Fallback to basic conversion
+                    analytics_dict = {
+                        "total_events": getattr(analytics_data, 'total_events', 0),
+                        "flagged_events": getattr(analytics_data, 'flagged_events', 0),
+                        "high_priority_events": getattr(analytics_data, 'high_priority_events', 0),
+                        "average_confidence_score": getattr(analytics_data, 'average_confidence_score', 0),
+                        "suspicious_activity_score": getattr(analytics_data, 'suspicious_activity_score', 0),
+                        "timeline_events": getattr(analytics_data, 'timeline_events', []),
+                        "step_timeline": getattr(analytics_data, 'step_timeline', [])
+                    }
+            
+            # Return JSON with PDF and ALL generation data
+            return {
+                "success": True,
+                "pdf_data": pdf_base64,
+                "filename": f"SENSAI_Report_{exam_title}_{user_display}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                "generation_data": {
+                    # Basic exam information
+                    "exam_info": {
+                        "exam_id": request.exam_id,
+                        "session_id": request.session_id,
+                        "exam_title": exam_title,
+                        "exam_description": exam_description,
+                        "student_name": user_display,
+                        "student_user_id": session_user_id,
+                        "exam_date": start_time.strftime("%B %d, %Y"),
+                        "exam_datetime": start_time.isoformat(),
+                        "completion_datetime": end_time.isoformat(),
+                        "duration_seconds": time_taken_seconds,
+                        "duration_formatted": f"{time_taken_seconds/60:.1f} minutes",
+                        "total_questions": len(questions),
+                        "final_score": score
+                    },
+                    
+                    # Complete AI evaluation data
+                    "ai_evaluation": evaluation_data,
+                    
+                    # All generated charts (base64 encoded)
+                    "charts": charts,
+                    
+                    # Raw exam data
+                    "exam_data": {
+                        "questions": questions,
+                        "answers": answers,
+                        "events_summary": events_summary
+                    },
+                    
+                    # Analytics data (if available)
+                    "analytics": analytics_dict,
+                    
+                    # Template variables used for PDF generation
+                    "template_variables": {
+                        "exam_title": exam_title,
+                        "student_name": user_display,
+                        "score": score,
+                        "grade_gradient": grade_gradient,
+                        "exam_date": start_time.strftime("%B %d, %Y"),
+                        "duration": f"{time_taken_seconds/60:.1f} minutes",
+                        "total_questions": len(questions),
+                        "generation_date": datetime.now().strftime("%B %d, %Y at %I:%M %p")
+                    },
+                    
+                    # Generation metadata
+                    "generation_metadata": {
+                        "generated_at": datetime.now().isoformat(),
+                        "report_type": request.report_type,
+                        "request_parameters": {
+                            "include_analytics": request.include_analytics,
+                            "include_questions": request.include_questions,
+                            "include_video_info": request.include_video_info
+                        },
+                        "included_sections": {
+                            "analytics": request.include_analytics and analytics_data is not None,
+                            "questions": request.include_questions,
+                            "charts": len(charts) > 0,
+                            "ai_evaluation": evaluation_data is not None,
+                            "video_info": request.include_video_info
+                        },
+                        "chart_count": len(charts),
+                        "ai_model_used": "gpt-4o-mini",
+                        "processing_time_seconds": (datetime.now() - datetime.fromisoformat(datetime.now().isoformat().split('.')[0])).total_seconds() if True else 0
+                    }
+                }
+            }
             
     except HTTPException:
         raise
@@ -1180,6 +1310,664 @@ async def generate_report(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+
+
+@router.post("/create-custom-course", response_model=dict)
+async def create_custom_course(
+    request: CustomCourseRequest,
+    background_tasks: BackgroundTasks,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Create a personalized course based on user's exam performance and weak areas
+    """
+    try:
+        print(f"Creating personalized course for exam {request.exam_id}, session {request.session_id}")
+        
+        # Get OpenAI API key
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Verify user has access to this exam session
+            await cursor.execute(
+                f"""SELECT s.user_id, e.created_by, e.title, e.description FROM {exam_sessions_table_name} s
+                    JOIN {exams_table_name} e ON s.exam_id = e.id
+                    WHERE s.id = ? AND s.exam_id = ?""",
+                (request.session_id, request.exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            session_user_id, exam_creator_id, exam_title, exam_description = session_row
+            
+            # Only the exam taker or exam creator can generate a custom course
+            if user_id != session_user_id and user_id != exam_creator_id:
+                raise HTTPException(status_code=403, detail="Not authorized to create course for this session")
+        
+        # Extract data for course generation
+        exam_info = request.report_data.get('exam_info', {})
+        ai_evaluation = request.report_data.get('ai_evaluation', {})
+        overall_performance = ai_evaluation.get('overall_performance', {})
+        
+        # Determine course name
+        if request.course_name_override:
+            course_name = request.course_name_override
+        else:
+            weaknesses = overall_performance.get('weaknesses', [])
+            primary_weakness = weaknesses[0] if weaknesses else 'Core Concepts'
+            course_name = f"Personalized {exam_title} - Focus on {primary_weakness}"
+        
+        # Check if we should create full course or just return recommendation
+        if not request.create_full_course:
+            # Generate only recommendation (original behavior)
+            course_data = await generate_custom_course_with_openai(
+                openai_api_key,
+                request.user_answers,
+                request.report_data
+            )
+            
+            return {
+                "success": True,
+                "course_created": False,
+                "course_data": course_data,
+                "session_id": request.session_id,
+                "exam_id": request.exam_id
+            }
+        
+        # Create full personalized course
+        
+        # Step 1: Determine organization for course creation
+        try:
+            org_id = await determine_student_org_id(user_id)
+        except Exception as e:
+            print(f"Organization determination failed, using simple fallback: {e}")
+            # Simple fallback: just use org_id = 1 or create a course without strict org requirements
+            org_id = 1  # Most systems have at least one organization with ID 1
+        
+        # Step 2: Create the course record
+        course_id = await create_course(course_name, org_id)
+        
+        # Get organization details and user email for routing and cohort enrollment
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            await cursor.execute(
+                f"SELECT name, slug FROM {organizations_table_name} WHERE id = ?",
+                (org_id,)
+            )
+            org_info = await cursor.fetchone()
+            org_name, org_slug = org_info if org_info else ("Unknown", "unknown")
+            
+            # Get user's email for cohort enrollment
+            await cursor.execute(
+                f"SELECT email FROM {users_table_name} WHERE id = ?",
+                (user_id,)
+            )
+            user_info = await cursor.fetchone()
+            user_email = user_info[0] if user_info else f"user_{user_id}@unknown.com"
+        
+        # Step 2.5: Create a cohort for the personalized course and enroll the user
+        cohort_name = f"Personalized Learning - {course_name}"
+        try:
+            cohort_id = await create_cohort(cohort_name, org_id)
+            
+            # Add user to the cohort as a learner
+            await add_members_to_cohort(cohort_id, org_slug, org_id, [user_email], ["learner"])
+            
+            # Add the course to the cohort
+            await add_course_to_cohorts(course_id, [cohort_id])
+            
+            print(f"Created cohort {cohort_id} and enrolled user {user_id}")
+            
+        except Exception as e:
+            print(f"Error creating cohort: {e}")
+            # Continue without cohort - we'll use a fallback approach
+            cohort_id = None
+        
+        # Step 3: Generate comprehensive reference material from exam data
+        reference_material = await create_reference_material_from_exam_data(
+            exam_info,
+            request.user_answers,
+            request.report_data
+        )
+        
+        # Step 4: Create temporary file for OpenAI
+        import openai
+        openai_client = openai.AsyncOpenAI(api_key=openai_api_key)
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+            temp_file.write(reference_material)
+            temp_file.flush()
+            
+            # Upload to OpenAI
+            with open(temp_file.name, 'rb') as f:
+                file = await openai_client.files.create(
+                    file=f,
+                    purpose="user_data",
+                )
+            
+            # Clean up temp file
+            os.unlink(temp_file.name)
+        
+        # Step 5: Generate personalized course description and instructions
+        weaknesses = overall_performance.get('weaknesses', [])
+        strengths = overall_performance.get('strengths', [])
+        focus_areas = ai_evaluation.get('learning_recommendations', {}).get('study_plan', {}).get('focus_areas', [])
+        
+        course_description = f"""Personalized learning course for {exam_title} based on individual exam performance analysis.
+        
+Primary Focus Areas: {', '.join(focus_areas[:3]) if focus_areas else 'Core concept reinforcement'}
+Identified Weaknesses: {', '.join(weaknesses[:3]) if weaknesses else 'General improvement needed'}
+Student Strengths: {', '.join(strengths[:3]) if strengths else 'Building foundational skills'}
+Performance Level: {overall_performance.get('performance_category', 'Average')} ({exam_info.get('final_score', 0)}%)
+        """
+        
+        intended_audience = f"""This course is specifically designed for a student who:
+- Completed the {exam_title} assessment with a {exam_info.get('final_score', 0)}% score
+- Shows {overall_performance.get('performance_category', 'average').lower()} performance level
+- Needs targeted improvement in: {', '.join(weaknesses[:3]) if weaknesses else 'foundational concepts'}
+- Can build upon existing strengths in: {', '.join(strengths[:3]) if strengths else 'basic understanding'}
+- Requires personalized learning path for skill development
+        """
+        
+        instructions = f"""Create a highly personalized learning course that addresses this student's specific weak areas:
+
+CRITICAL FOCUS AREAS (prioritize these topics):
+{chr(10).join([f'- {weakness}' for weakness in weaknesses[:5]])}
+
+STRENGTHS TO BUILD UPON:
+{chr(10).join([f'- {strength}' for strength in strengths[:3]])}
+
+LEARNING REQUIREMENTS:
+- Start with foundational concepts for weak areas
+- Include progressive difficulty levels
+- Provide extensive practice for identified problem areas
+- Create confidence-building exercises using student's strengths
+- Focus on practical application and skill reinforcement
+- Include targeted remedial content for knowledge gaps
+
+PERSONALIZATION GUIDELINES:
+- Tailor content difficulty to student's current performance level
+- Prioritize weak areas while maintaining engagement
+- Include real-world examples relevant to the exam context
+- Create multiple practice opportunities for challenging concepts
+        """
+        
+        # Step 6: Store course generation request and start background task
+        job_details = {
+            "course_description": course_description,
+            "intended_audience": intended_audience,
+            "instructions": instructions,
+            "reference_material_s3_key": None,  # We're using OpenAI file directly
+            "openai_file_id": file.id,
+            "personalized_course": True,
+            "source_exam_id": request.exam_id,
+            "source_session_id": request.session_id,
+            "user_id": user_id
+        }
+        
+        job_uuid = await store_course_generation_request(course_id, job_details)
+        
+        # Step 7: Start course generation in background
+        print(f"Starting course structure generation for course {course_id} with job {job_uuid}")
+        
+        background_tasks.add_task(
+            generate_personalized_course_complete,
+            course_description,
+            intended_audience,  
+            instructions,
+            file.id,
+            course_id,
+            job_uuid,
+            job_details
+        )
+        
+        # Step 8: Prepare response data
+        return {
+            "success": True,
+            "course_created": True,
+            "course_id": course_id,
+            "course_name": course_name,
+            "job_uuid": job_uuid,
+            "generation_status": "started",
+            "estimated_completion": "5-10 minutes",
+            "weak_areas_targeted": weaknesses[:5],
+            "strengths_leveraged": strengths[:3],
+            "organization": {
+                "id": org_id,
+                "name": org_name,
+                "slug": org_slug
+            },
+            "cohort_id": cohort_id,
+            "course_metadata": {
+                "total_focus_areas": len(focus_areas),
+                "performance_level": overall_performance.get('performance_category', 'Average'),
+                "source_exam_score": exam_info.get('final_score', 0),
+                "personalization_level": "high"
+            },
+            "session_id": request.session_id,
+            "exam_id": request.exam_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating personalized course: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create personalized course: {str(e)}")
+
+
+async def generate_custom_course_with_openai(
+    api_key: str,
+    user_answers: dict,
+    report_data: dict
+) -> dict:
+    """Generate custom course recommendations using OpenAI based on exam performance"""
+    
+    try:
+        import openai
+        client = openai.AsyncOpenAI(api_key=api_key)
+        
+        # Extract key information from report data
+        exam_info = report_data.get('exam_info', {})
+        ai_evaluation = report_data.get('ai_evaluation', {})
+        
+        # Get performance insights
+        overall_performance = ai_evaluation.get('overall_performance', {})
+        strengths = overall_performance.get('strengths', [])
+        weaknesses = overall_performance.get('weaknesses', [])
+        learning_recommendations = ai_evaluation.get('learning_recommendations', {})
+        
+        # Create detailed prompt for course generation
+        course_prompt = f"""
+        You are an expert educational course designer. Based on a student's exam performance and learning needs, create a personalized course recommendation.
+
+        STUDENT PERFORMANCE DATA:
+        - Exam: {exam_info.get('exam_title', 'Unknown Exam')}
+        - Score: {exam_info.get('final_score', 0)}%
+        - Strengths: {', '.join(strengths) if strengths else 'None identified'}
+        - Weaknesses: {', '.join(weaknesses) if weaknesses else 'None identified'}
+        
+        LEARNING RECOMMENDATIONS:
+        - Focus Areas: {', '.join(learning_recommendations.get('study_plan', {}).get('focus_areas', []))}
+        - Immediate Actions: {len(learning_recommendations.get('immediate_actions', []))} priority items identified
+        - Next Steps: {', '.join(learning_recommendations.get('next_steps', []))}
+        
+        USER ANSWERS ANALYSIS:
+        - Total Questions Answered: {len([a for a in user_answers.values() if a.strip()]) if user_answers else 0}
+        - Answer Quality: Based on provided responses
+        
+        Create a personalized course that addresses this student's specific learning needs and builds upon their strengths while improving their weaknesses.
+
+        Return ONLY a valid JSON object with this exact structure:
+        {{
+            "course_name": "A compelling, specific course title that reflects the learning objectives",
+            "course_about": "A detailed description of what the course covers, the topics to be covered, main learning objectives, and how it addresses the student's specific needs. Should be 2-3 sentences.",
+            "course_audience": "A clear description of who this course is for, their expected background, current skill level, and what they hope to achieve after completion. Should be 2-3 sentences."
+        }}
+        """
+        
+        # Generate course recommendation
+        course_response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert educational course designer. Always return valid JSON only."},
+                {"role": "user", "content": course_prompt}
+            ],
+            max_tokens=800,
+            temperature=0.7
+        )
+        
+        # Parse JSON response
+        try:
+            course_json = json.loads(course_response.choices[0].message.content)
+            
+            # Validate required fields
+            required_fields = ['course_name', 'course_about', 'course_audience']
+            for field in required_fields:
+                if field not in course_json:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            return course_json
+            
+        except json.JSONDecodeError:
+            print("Failed to parse JSON from OpenAI course response, using fallback")
+            return generate_fallback_course(exam_info, overall_performance, strengths, weaknesses)
+        
+    except Exception as e:
+        print(f"Error generating custom course with OpenAI: {e}")
+        return generate_fallback_course(exam_info, overall_performance, strengths, weaknesses)
+
+
+def generate_fallback_course(exam_info: dict, overall_performance: dict, strengths: list, weaknesses: list) -> dict:
+    """Generate a fallback course when OpenAI fails"""
+    
+    exam_title = exam_info.get('exam_title', 'Subject')
+    score = exam_info.get('final_score', 0)
+    performance_category = overall_performance.get('performance_category', 'Average')
+    
+    # Determine course focus based on performance
+    if score >= 80:
+        focus = "advanced concepts and practical applications"
+        audience_level = "intermediate to advanced learners"
+    elif score >= 60:
+        focus = "core concepts and skill reinforcement"  
+        audience_level = "beginner to intermediate learners"
+    else:
+        focus = "fundamental concepts and foundational skills"
+        audience_level = "beginners"
+    
+    return {
+        "course_name": f"Personalized {exam_title} Mastery Course",
+        "course_about": f"This customized course focuses on {focus} based on your {performance_category.lower()} performance. It covers key areas for improvement while building upon your existing strengths to ensure comprehensive understanding and skill development.",
+        "course_audience": f"This course is designed for {audience_level} who want to improve their understanding of {exam_title.lower()} concepts. Students should have basic familiarity with the subject and are committed to structured learning and practice to achieve mastery."
+    }
+
+
+async def create_reference_material_from_exam_data(
+    exam_info: dict,
+    user_answers: dict,
+    report_data: dict
+) -> str:
+    """Create comprehensive reference material from exam performance data"""
+    
+    ai_evaluation = report_data.get('ai_evaluation', {})
+    overall_performance = ai_evaluation.get('overall_performance', {})
+    question_analysis = ai_evaluation.get('question_analysis', [])
+    learning_recommendations = ai_evaluation.get('learning_recommendations', {})
+    
+    # Build comprehensive reference material
+    reference_content = f"""
+# Personalized Learning Reference Material
+
+## Student Performance Summary
+- Exam: {exam_info.get('exam_title', 'Unknown')}
+- Final Score: {exam_info.get('final_score', 0)}%
+- Performance Level: {overall_performance.get('performance_category', 'Average')}
+- Time Efficiency: {overall_performance.get('time_efficiency', 'Average')}
+
+## Strengths Identified
+{chr(10).join([f"- {strength}" for strength in overall_performance.get('strengths', [])])}
+
+## Areas Requiring Improvement
+{chr(10).join([f"- {weakness}" for weakness in overall_performance.get('weaknesses', [])])}
+
+## Detailed Question Analysis
+"""
+    
+    # Add question-by-question analysis
+    for i, analysis in enumerate(question_analysis, 1):
+        reference_content += f"""
+### Question {i} Analysis
+- Status: {analysis.get('status', 'unknown')}
+- Accuracy Score: {analysis.get('criteria_scores', {}).get('accuracy', 0)}/100
+- Completeness Score: {analysis.get('criteria_scores', {}).get('completeness', 0)}/100
+- Clarity Score: {analysis.get('criteria_scores', {}).get('clarity', 0)}/100
+- Depth Score: {analysis.get('criteria_scores', {}).get('depth', 0)}/100
+- Feedback: {analysis.get('feedback', 'No feedback available')}
+- Improvement Tips: {', '.join(analysis.get('improvement_tips', []))}
+"""
+    
+    # Add learning recommendations
+    study_plan = learning_recommendations.get('study_plan', {})
+    reference_content += f"""
+
+## Learning Recommendations
+
+### Focus Areas for Improvement
+{chr(10).join([f"- {area}" for area in study_plan.get('focus_areas', [])])}
+
+### Recommended Study Resources
+{chr(10).join([f"- {resource}" for resource in study_plan.get('recommended_resources', [])])}
+
+### Practice Exercises Needed
+{chr(10).join([f"- {exercise}" for exercise in study_plan.get('practice_exercises', [])])}
+
+### Immediate Priority Actions
+"""
+    
+    # Add immediate actions with priorities
+    for action in learning_recommendations.get('immediate_actions', []):
+        reference_content += f"""
+- **{action.get('priority', 'Medium')} Priority**: {action.get('action', 'Review concepts')}
+  Timeline: {action.get('timeline', '1-2 weeks')}
+"""
+    
+    # Add skill assessment data
+    skill_assessment = ai_evaluation.get('skill_assessment', {})
+    reference_content += f"""
+
+## Knowledge Areas Assessment
+"""
+    
+    for area in skill_assessment.get('knowledge_areas', []):
+        reference_content += f"""
+### {area.get('area', 'Unknown Area')}
+- Current Level: {area.get('level', 'Unknown')}
+- Score: {area.get('score', 0)}/100
+- Evidence: {', '.join(area.get('evidence', []))}
+"""
+    
+    # Add cognitive skills analysis
+    cognitive_skills = skill_assessment.get('cognitive_skills', {})
+    if cognitive_skills:
+        reference_content += f"""
+
+## Cognitive Skills Assessment
+- Critical Thinking: {cognitive_skills.get('critical_thinking', 0)}/100
+- Analytical Reasoning: {cognitive_skills.get('analytical_reasoning', 0)}/100
+- Application: {cognitive_skills.get('application', 0)}/100
+- Synthesis: {cognitive_skills.get('synthesis', 0)}/100
+"""
+    
+    return reference_content.strip()
+
+
+async def determine_student_org_id(user_id: int) -> int:
+    """Determine the appropriate organization ID for course creation"""
+    
+    try:
+        print(f"Determining org ID for user {user_id}")
+        
+        # Get user's organizations
+        try:
+            user_orgs = await get_user_organizations(user_id)
+            print(f"User organizations found: {len(user_orgs) if user_orgs else 0}")
+            
+            if user_orgs:
+                org_id = user_orgs[0]["id"]
+                print(f"Using existing organization {org_id} for user {user_id}")
+                return org_id
+        except Exception as e:
+            print(f"Error getting user organizations: {e}")
+            # Continue to fallback options
+        
+        # If user has no organizations, try simpler approaches
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            print("Checking for default organizations...")
+            # Try to find any existing organization as fallback
+            await cursor.execute(
+                f"SELECT id FROM {organizations_table_name} LIMIT 1"
+            )
+            any_org = await cursor.fetchone()
+            
+            if any_org:
+                print(f"Using fallback organization {any_org[0]} for user {user_id}")
+                # Add user to this organization (if not already there)
+                try:
+                    await cursor.execute(
+                        f"INSERT OR IGNORE INTO {user_organizations_table_name} (user_id, organization_id, role) VALUES (?, ?, 'learner')",
+                        (user_id, any_org[0])
+                    )
+                    await conn.commit()
+                except Exception as e:
+                    print(f"Note: Could not add user to organization (may already exist): {e}")
+                
+                return any_org[0]
+            
+            print("No organizations found, creating a default one...")
+            # Create a default organization if none exists
+            try:
+                await cursor.execute(
+                    f"INSERT INTO {organizations_table_name} (name, slug) VALUES (?, ?)",
+                    ("SENSAI Learning", "sensai-learning")
+                )
+                org_id = cursor.lastrowid
+                
+                # Add user to the organization
+                await cursor.execute(
+                    f"INSERT INTO {user_organizations_table_name} (user_id, organization_id, role) VALUES (?, ?, 'learner')",
+                    (user_id, org_id)
+                )
+                
+                await conn.commit()
+                
+                print(f"Created default organization {org_id} for user {user_id}")
+                return org_id
+                
+            except Exception as e:
+                print(f"Failed to create default organization: {e}")
+                # As absolute last resort, just return org ID 1 (assuming it exists)
+                print("Using absolute fallback org ID 1")
+                return 1
+        
+    except Exception as e:
+        print(f"Critical error determining org ID: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Absolute fallback - try to use org ID 1
+        try:
+            async with get_new_db_connection() as conn:
+                cursor = await conn.cursor()
+                await cursor.execute(f"SELECT id FROM {organizations_table_name} WHERE id = 1")
+                if await cursor.fetchone():
+                    print("Using emergency fallback org ID 1")
+                    return 1
+        except:
+            pass
+            
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to determine organization for course creation: {str(e)}"
+        )
+
+
+async def generate_personalized_course_complete(
+    course_description: str,
+    intended_audience: str,
+    instructions: str,
+    openai_file_id: str,
+    course_id: int,
+    job_uuid: str,
+    job_details: dict
+):
+    """Complete personalized course generation including structure and content"""
+    
+    try:
+        print(f"Starting complete course generation for course {course_id}")
+        
+        # Phase 1: Generate course structure
+        await _generate_course_structure(
+            course_description,
+            intended_audience,
+            instructions,
+            openai_file_id,
+            course_id,
+            job_uuid,
+            job_details
+        )
+        
+        print(f"Course structure completed for course {course_id}, starting task generation")
+        
+        # Phase 2: Generate task content
+        print(f"Starting task content generation for course {course_id}")
+        
+        # Import the necessary modules for task generation
+        import instructor
+        import openai
+        from api.db.course import get_course_generation_job_details
+        from api.db.task import store_task_generation_request
+        from api.routes.ai import generate_course_task
+        from api.utils.concurrency import async_batch_gather
+        from api.settings import settings
+        
+        try:
+            # Get job details
+            job_details_for_tasks = await get_course_generation_job_details(job_uuid)
+            
+            if not job_details_for_tasks.get("course_structure"):
+                print(f"No course structure found in job details for course {course_id}")
+                return
+                
+            # Set up OpenAI client
+            client = instructor.from_openai(
+                openai.AsyncOpenAI(api_key=settings.openai_api_key)
+            )
+            
+            # Create task generation jobs
+            tasks_to_generate = []
+            
+            for module in job_details_for_tasks["course_structure"]["modules"]:
+                for concept in module["concepts"]:
+                    for task in concept["tasks"]:
+                        task_job_uuid = await store_task_generation_request(
+                            task["id"],
+                            course_id,
+                            {
+                                "task": task,
+                                "concept": concept,
+                                "openai_file_id": job_details_for_tasks["openai_file_id"],
+                                "course_job_uuid": job_uuid,
+                                "course_id": course_id,
+                            },
+                        )
+                        
+                        tasks_to_generate.append(
+                            generate_course_task(
+                                client,
+                                task,
+                                concept,
+                                job_details_for_tasks["openai_file_id"],
+                                task_job_uuid,
+                                job_uuid,
+                                course_id,
+                            )
+                        )
+            
+            # Run all task generation in parallel
+            await async_batch_gather(tasks_to_generate, description="Generating personalized course tasks")
+            
+            print(f"Task generation completed for course {course_id}")
+            
+        except Exception as e:
+            print(f"Error generating tasks for course {course_id}: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        print(f"Complete course generation finished for course {course_id}")
+        
+    except Exception as e:
+        print(f"Error in complete course generation for course {course_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Update job status to failed
+        from api.db.course import update_course_generation_job_status
+        from api.models import GenerateCourseJobStatus
+        
+        try:
+            await update_course_generation_job_status(job_uuid, GenerateCourseJobStatus.COMPLETED)
+        except:
+            pass
 
 
 async def generate_ai_summaries(
@@ -1617,7 +2405,8 @@ async def create_pdf_report(
     analytics_data: dict,
     evaluation_data: dict,
     charts: dict,
-    request: ReportGenerationRequest
+    request: ReportGenerationRequest,
+    grade_gradient: str
 ) -> str:
     """Create a beautiful PDF report using WeasyPrint"""
     
@@ -2263,20 +3052,7 @@ async def create_pdf_report(
     </html>
     """
     
-    # Determine grade color gradient
-    overall_perf = evaluation_data.get('overall_performance', {})
-    grade_level = overall_perf.get('grade_level', 'C')
-    
-    if grade_level == 'A' or score >= 90:
-        grade_gradient = "linear-gradient(135deg, #059669 0%, #10b981 100%)"
-    elif grade_level == 'B' or score >= 80:
-        grade_gradient = "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)"
-    elif grade_level == 'C' or score >= 70:
-        grade_gradient = "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)" 
-    elif grade_level == 'D' or score >= 60:
-        grade_gradient = "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)"
-    else:
-        grade_gradient = "linear-gradient(135deg, #7c2d12 0%, #dc2626 100%)"
+    # Grade gradient is now calculated earlier in the function
     
     # Prepare template variables
     template_vars = {
