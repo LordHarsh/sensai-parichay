@@ -28,7 +28,8 @@ class EventScorer:
         'keystroke_mismatch': {'base_confidence': 0.9, 'description': 'Text appears without corresponding keystrokes'},
         'content_similarity': {'base_confidence': 0.85, 'description': 'Text similarity to external sources'},
         'tab_switch': {'base_confidence': 0.9, 'description': 'User navigated away from exam'},
-        'sudden_text_burst': {'base_confidence': 0.88, 'description': 'Large amount of text appeared suddenly'}
+        'sudden_text_burst': {'base_confidence': 0.88, 'description': 'Large amount of text appeared suddenly'},
+        'audio_assistance_detected': {'base_confidence': 0.8, 'description': 'Background assistance detected in audio'}
     }
     
     # Medium priority events - WPM changes, mouse drifting, random typing, multi face
@@ -211,6 +212,25 @@ class EventScorer:
                 confidence = min(0.95, confidence + 0.05)
             elif away_duration > 5:  # 5+ seconds away
                 confidence = min(0.92, confidence + 0.02)
+        
+        elif event_type == 'audio_assistance_detected':
+            # Use confidence from audio analysis
+            existing_confidence = event_data.get('confidence_score', 0)
+            multiple_speakers = event_data.get('multiple_speakers', False)
+            suspicious_phrase_count = len(event_data.get('suspicious_phrases', []))
+            
+            if existing_confidence > 0:
+                confidence = existing_confidence
+            
+            # Boost confidence for multiple speakers
+            if multiple_speakers:
+                confidence = min(0.98, confidence + 0.05)
+            
+            # Boost confidence for multiple suspicious phrases
+            if suspicious_phrase_count > 3:
+                confidence = min(0.95, confidence + 0.08)
+            elif suspicious_phrase_count > 1:
+                confidence = min(0.92, confidence + 0.04)
         
         # Ensure confidence is within valid range
         return max(0.0, min(1.0, confidence))
