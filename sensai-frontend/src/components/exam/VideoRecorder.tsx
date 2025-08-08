@@ -272,7 +272,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
 
   if (hasPermission === false) {
     return (
-      <div className="h-full bg-gray-900 border-l border-gray-700 p-6">
+      <div className="h-full bg-black border-l border-gray-700 p-6">
         <div className="flex flex-col h-full">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-100 mb-2">Camera Access</h3>
@@ -281,7 +281,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
 
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center max-w-sm">
-              <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-900/20 rounded-md flex items-center justify-center mx-auto mb-4">
                 <CameraOff className="w-8 h-8 text-red-400" />
               </div>
               <h4 className="text-lg font-semibold text-gray-100 mb-2">Camera Permission Required</h4>
@@ -290,7 +290,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
               </p>
               <button
                 onClick={requestPermissions}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
+                className="w-full bg-white text-black hover:opacity-90 text-white px-4 py-2.5 rounded-md font-medium transition-colors"
               >
                 Grant Permission
               </button>
@@ -302,7 +302,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
   }
 
   return (
-    <div className="h-full bg-gray-900 border-l border-gray-700 flex flex-col">
+    <div className="h-full bg-black border-l border-gray-700 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-700">
         <div className="flex items-center justify-between mb-3">
@@ -317,12 +317,12 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
         </div>
         
         <div className="flex items-center space-x-3">
-          <div className={`flex items-center space-x-1 text-xs px-2 py-1 rounded-full ${
+          <div className={`flex items-center space-x-1 text-xs px-2 py-1 rounded-md ${
             recordingStatus === 'recording' 
               ? 'bg-red-900/50 text-red-400 border border-red-500' 
-              : 'bg-gray-800 text-gray-400 border border-gray-600'
+              : 'bg-[#111111] text-gray-400 border border-gray-600'
           }`}>
-            <div className={`w-1.5 h-1.5 rounded-full ${
+            <div className={`w-1.5 h-1.5 rounded-md ${
               recordingStatus === 'recording' ? 'bg-red-400 animate-pulse' : 'bg-gray-500'
             }`}></div>
             <span className="font-medium">{getStatusText()}</span>
@@ -332,7 +332,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
 
       {/* Video Feed */}
       <div className="flex-1 p-4">
-        <div className="relative aspect-video bg-gray-800 rounded-lg overflow-hidden border border-gray-600">
+        <div className="relative aspect-video bg-[#111111] rounded-md overflow-hidden border border-gray-600">
           <video
             ref={videoRef}
             autoPlay
@@ -344,14 +344,14 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
           {recordingStatus === 'recording' && (
             <div className="absolute top-3 left-3">
               <div className="bg-red-600 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                <div className="w-1.5 h-1.5 bg-white rounded-md animate-pulse"></div>
                 <span>RECORDING</span>
               </div>
             </div>
           )}
 
           {!streamRef.current && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+            <div className="absolute inset-0 flex items-center justify-center bg-[#111111]">
               <div className="text-center">
                 <Camera className="w-8 h-8 text-gray-500 mx-auto mb-2" />
                 <p className="text-sm text-gray-400">Camera not active</p>
@@ -361,7 +361,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
         </div>
 
         {error && (
-          <div className="mt-4 p-3 bg-amber-900/20 border border-amber-500/50 rounded-lg">
+          <div className="mt-4 p-3 bg-amber-900/20 border border-amber-500/50 rounded-md">
             <div className="flex items-start space-x-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
               <div>
@@ -374,18 +374,18 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
 
         {/* Stats */}
         <div className="mt-4 grid grid-cols-2 gap-4">
-          <div className="bg-gray-800 rounded-lg p-3">
+          <div className="bg-[#111111] rounded-md p-3">
             <div className="flex items-center space-x-2 mb-1">
               <Video className="w-4 h-4 text-gray-400" />
-              <span className="text-xs font-medium text-gray-300">Video Quality</span>
+              <span className="text-xs font-medium text-gray-200">Video Quality</span>
             </div>
-            <p className="text-sm font-semibold text-gray-100">720p • 30fps</p>
+            <p className="text-sm font-semibold text-gray-100">720p 30fps</p>
           </div>
           
-          <div className="bg-gray-800 rounded-lg p-3">
+          <div className="bg-[#111111] rounded-md p-3">
             <div className="flex items-center space-x-2 mb-1">
               <Mic className="w-4 h-4 text-gray-400" />
-              <span className="text-xs font-medium text-gray-300">Data Transfer</span>
+              <span className="text-xs font-medium text-gray-200">Data Transfer</span>
             </div>
             <p className="text-sm font-semibold text-gray-100">{formatBytes(dataTransferred)}</p>
           </div>
@@ -399,7 +399,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
             ) : (
               <AlertTriangle className="w-4 h-4 text-red-400" />
             )}
-            <span className="text-sm text-gray-300">
+            <span className="text-sm text-gray-200">
               {hasPermission ? 'Camera permissions granted' : 'Camera permissions required'}
             </span>
           </div>
@@ -410,7 +410,7 @@ export default function VideoRecorder({ isRecording, examId, websocket }: VideoR
             ) : (
               <AlertTriangle className="w-4 h-4 text-red-400" />
             )}
-            <span className="text-sm text-gray-300">
+            <span className="text-sm text-gray-200">
               {websocket?.isConnected() ? 'Connection stable' : 'Connection issues'}
             </span>
           </div>

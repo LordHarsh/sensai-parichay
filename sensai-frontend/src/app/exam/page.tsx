@@ -89,20 +89,28 @@ export default function ExamListPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-white text-xl">Loading exams...</div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 text-xl mb-4">{error}</div>
           <button
             onClick={() => window.location.reload()}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
+            className="bg-white text-black px-4 py-2 rounded-md hover:opacity-90 transition-opacity font-medium"
           >
             Retry
           </button>
@@ -112,17 +120,17 @@ export default function ExamListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-6xl mx-auto py-8 px-6">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Available Exams</h1>
+            <h1 className="text-3xl font-light mb-2">Available Exams</h1>
             <p className="text-gray-400">Select an exam to begin your assessment</p>
           </div>
           
           <Link
             href="/exam/create"
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors"
+            className="bg-white text-black px-6 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
           >
             Create New Exam
           </Link>
@@ -133,7 +141,7 @@ export default function ExamListPage() {
             <div className="text-gray-400 text-xl mb-4">No exams available</div>
             <Link
               href="/exam/create"
-              className="inline-block bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-medium transition-colors"
+              className="inline-block bg-white text-black px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity"
             >
               Create Your First Exam
             </Link>
@@ -143,15 +151,15 @@ export default function ExamListPage() {
             {exams.map((exam) => (
               <div
                 key={exam.id}
-                className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors shadow-sm flex flex-col h-full"
+                className="bg-[#111111] border border-gray-700 rounded-md p-6 hover:border-gray-700 transition-colors shadow-sm flex flex-col h-full"
               >
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-semibold text-white">
+                    <h3 className="text-xl font-medium text-white">
                       {exam.title}
                     </h3>
                   </div>                
-                  <p className="text-gray-300 text-sm mb-4 line-clamp-3">
+                  <p className="text-gray-200 text-sm mb-4 line-clamp-3">
                     {exam.description}
                   </p>
                 </div>
@@ -165,26 +173,22 @@ export default function ExamListPage() {
                   </div>
                   
                   <div className="flex items-center space-x-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"></svg>
-                    <div className="flex items-center space-x-1">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      <span>Monitored</span>
-                    </div>
-                    
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>Monitored</span>
                   </div>
                 </div>
                 
                 <div className="flex space-x-2">
                   <Link
                     href={`/exam/${exam.id}`}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-center py-2 px-4 rounded-lg font-medium transition-colors"
+                    className="flex-1 bg-white text-black text-center py-2 px-4 rounded-md font-medium hover:opacity-90 transition-opacity"
                   >
                     Start Exam
                   </Link>
                   
-                  <button className="px-4 py-2 border border-gray-600 hover:border-gray-500 rounded-lg transition-colors">
+                  <button className="px-4 py-2 border border-gray-600 text-gray-200 hover:border-gray-500 hover:text-white hover:bg-[#1A1A1A] rounded-md transition-all duration-200">
                     Preview
                   </button>
                 </div>
@@ -192,11 +196,11 @@ export default function ExamListPage() {
                 <div className="mt-4 pt-4 border-t border-gray-700">
                   <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>Created {new Date(exam.created_at).toLocaleDateString()}</span>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-200">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-[#1A1A1A] text-gray-200">
                       {exam.duration} min
                     </span>
                     <div className="flex items-center space-x-1">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <div className="w-2 h-2 bg-green-400 rounded-md"></div>
                       <span>Available</span>
                     </div>
                   </div>
@@ -206,27 +210,27 @@ export default function ExamListPage() {
           </div>
         )}
         
-        <div className="mt-12 bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Exam Guidelines</h2>
+        <div className="mt-12 bg-[#111111] border border-gray-700 rounded-md p-6">
+          <h2 className="text-xl font-light mb-4">Exam Guidelines</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
             <div>
-              <h3 className="font-semibold text-gray-300 mb-2">Before Starting:</h3>
+              <h3 className="font-medium text-gray-200 mb-2">Before Starting:</h3>
               <ul className="space-y-1 text-gray-400">
-                <li>• Ensure stable internet connection</li>
-                <li>• Close unnecessary applications</li>
-                <li>• Allow camera and microphone access</li>
-                <li>• Find a quiet, well-lit environment</li>
+                <li>Ensure stable internet connection</li>
+                <li>Close unnecessary applications</li>
+                <li>Allow camera and microphone access</li>
+                <li>Find a quiet, well-lit environment</li>
               </ul>
             </div>
             
             <div>
-              <h3 className="font-semibold text-gray-300 mb-2">During the Exam:</h3>
+              <h3 className="font-medium text-gray-200 mb-2">During the Exam:</h3>
               <ul className="space-y-1 text-gray-400">
-                <li>• Stay in full-screen mode</li>
-                <li>• Keep your face visible to the camera</li>
-                <li>• Avoid excessive tab switching</li>
-                <li>• Do not use external resources unless permitted</li>
+                <li>Stay in full-screen mode</li>
+                <li>Keep your face visible to the camera</li>
+                <li>Avoid excessive tab switching</li>
+                <li>Do not use external resources unless permitted</li>
               </ul>
             </div>
           </div>

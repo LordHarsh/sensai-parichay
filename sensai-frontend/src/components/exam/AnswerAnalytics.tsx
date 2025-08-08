@@ -104,7 +104,7 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
 
   if (!analytics) {
     return (
-      <div className="bg-gray-800 p-6 rounded-lg">
+      <div className="bg-[#111111] p-6 rounded-md">
         <h2 className="text-xl font-semibold mb-4 flex items-center">
           <Edit3 className="mr-2" size={20} />
           Answer Change Analytics
@@ -124,7 +124,7 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
   };
 
   return (
-    <div className="bg-gray-800 p-6 rounded-lg space-y-6">
+    <div className="bg-[#111111] p-6 rounded-md space-y-6">
       <h2 className="text-xl font-semibold mb-4 flex items-center">
         <Edit3 className="mr-2" size={20} />
         Answer Change Analytics ({analytics.totalDataPoints} changes)
@@ -132,23 +132,23 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
 
       {/* Summary Statistics */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-blue-400">{analytics.totalChanges}</div>
           <div className="text-xs text-gray-400">Total Changes</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-green-400">{analytics.questionsModified}</div>
           <div className="text-xs text-gray-400">Questions Modified</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-orange-400">{analytics.avgChangesPerQuestion}</div>
           <div className="text-xs text-gray-400">Avg Changes/Question</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-purple-400">{analytics.avgTimeBetweenChanges}s</div>
           <div className="text-xs text-gray-400">Avg Time Between</div>
         </div>
-        <div className="bg-gray-700 p-4 rounded-lg text-center">
+        <div className="bg-gray-700 p-4 rounded-md text-center">
           <div className="text-2xl font-bold text-red-400">{analytics.rapidChanges}</div>
           <div className="text-xs text-gray-400">Rapid Changes</div>
         </div>
@@ -156,7 +156,7 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
 
       {/* Anomaly Detection */}
       {(analytics.rapidChanges > 5 || analytics.excessiveModifications.length > 0) && (
-        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-lg">
+        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-md">
           <h3 className="font-semibold text-red-400 mb-2 flex items-center">
             <Target className="mr-2" size={16} />
             Suspicious Answer Patterns Detected
@@ -174,7 +174,7 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
               <div className="mt-2 space-y-1">
                 {analytics.excessiveModifications.slice(0, 3).map((mod, index) => (
                   <div key={index} className="text-xs text-red-200">
-                    • Question {mod.question_id}: {mod.changes} changes over {Math.round((mod.last_change - mod.first_change) / 1000 / 60)} minutes
+                    Question {mod.question_id}: {mod.changes} changes over {Math.round((mod.last_change - mod.first_change) / 1000 / 60)} minutes
                   </div>
                 ))}
                 {analytics.excessiveModifications.length > 3 && (
@@ -258,23 +258,23 @@ export default function AnswerAnalytics({ answerEvents, sessionId }: AnswerAnaly
       </div>
 
       {/* Editing Behavior Insights */}
-      <div className="bg-gray-700 p-4 rounded-lg">
+      <div className="bg-gray-700 p-4 rounded-md">
         <h3 className="font-semibold text-white mb-3">Editing Behavior Analysis</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <h4 className="text-gray-300 font-medium mb-2">Modification Patterns:</h4>
+            <h4 className="text-gray-200 font-medium mb-2">Modification Patterns:</h4>
             <ul className="text-gray-400 space-y-1">
-              <li>• Questions modified: {analytics.questionsModified}</li>
-              <li>• Average modifications per question: {analytics.avgChangesPerQuestion}</li>
-              <li>• Rapid changes (suspicious): {analytics.rapidChanges}</li>
+              <li>Questions modified: {analytics.questionsModified}</li>
+              <li>Average modifications per question: {analytics.avgChangesPerQuestion}</li>
+              <li>Rapid changes (suspicious): {analytics.rapidChanges}</li>
             </ul>
           </div>
           <div>
-            <h4 className="text-gray-300 font-medium mb-2">Time Analysis:</h4>
+            <h4 className="text-gray-200 font-medium mb-2">Time Analysis:</h4>
             <ul className="text-gray-400 space-y-1">
-              <li>• Average time between changes: {analytics.avgTimeBetweenChanges}s</li>
-              <li>• Total editing session: {analytics.totalChanges} changes</li>
-              <li>• Behavior consistency: {analytics.rapidChanges < 5 ? 'Normal' : 'Suspicious'}</li>
+              <li>Average time between changes: {analytics.avgTimeBetweenChanges}s</li>
+              <li>Total editing session: {analytics.totalChanges} changes</li>
+              <li>Behavior consistency: {analytics.rapidChanges < 5 ? 'Normal' : 'Suspicious'}</li>
             </ul>
           </div>
         </div>

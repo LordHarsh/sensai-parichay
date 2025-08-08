@@ -11,14 +11,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 401 });
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/exam/generate-description`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-id": userId
-      },
-      body: JSON.stringify(body)
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/exam/generate-description`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId
+        },
+        body: JSON.stringify(body)
+      }
+    );
 
     if (!response.ok) {
       const errorData = await response.json();

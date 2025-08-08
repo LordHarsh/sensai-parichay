@@ -89,7 +89,7 @@ export default function ExamAnalyticsPage() {
       if (event.priority === 3) return 'border-red-500 bg-red-900/20 text-red-300';
       if (event.priority === 2) return 'border-yellow-500 bg-yellow-900/20 text-yellow-300';
     }
-    return 'border-gray-600 bg-gray-800 text-gray-300';
+    return 'border-gray-700 bg-[#111111] text-gray-200';
   };
 
   const getEventIcon = (eventType: string) => {
@@ -151,18 +151,18 @@ export default function ExamAnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="w-12 h-12 border-t-2 border-4 border-blue-500 rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <AlertTriangle size={48} className="mx-auto mb-4 text-red-400" />
-          <h2 className="text-2xl font-semibold mb-2">Analytics Not Found</h2>
+          <h2 className="text-2xl font-medium mb-2">Analytics Not Found</h2>
           <p className="text-gray-400">Unable to load analytics for this exam session.</p>
         </div>
       </div>
@@ -170,17 +170,17 @@ export default function ExamAnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-6xl mx-auto py-8 px-6">
         <div className="mb-8 flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Exam Analytics</h1>
+            <h1 className="text-3xl font-light mb-2">Exam Analytics</h1>
             <p className="text-gray-400">Session ID: {analytics.session_id}</p>
           </div>
           <div className="flex space-x-3">
             <button
               onClick={() => window.location.href = `/exam/${examId}/results/${sessionId}`}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+              className="px-6 py-3 bg-white text-black hover:opacity-90 rounded-md font-medium transition-colors flex items-center space-x-2"
             >
               <Eye size={20} />
               <span>View Results & Video</span>
@@ -190,41 +190,41 @@ export default function ExamAnalyticsPage() {
 
         {/* Analytics Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Total Events</p>
-                <p className="text-2xl font-bold">{analytics.total_events}</p>
+                <p className="text-2xl font-light">{analytics.total_events}</p>
               </div>
               <TrendingUp className="text-blue-400" size={24} />
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Flagged Events</p>
-                <p className="text-2xl font-bold text-red-400">{analytics.flagged_events}</p>
+                <p className="text-2xl font-light text-red-400">{analytics.flagged_events}</p>
               </div>
               <Flag className="text-red-400" size={24} />
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">High Priority</p>
-                <p className="text-2xl font-bold text-yellow-400">{analytics.high_priority_events}</p>
+                <p className="text-2xl font-light text-yellow-400">{analytics.high_priority_events}</p>
               </div>
               <AlertTriangle className="text-yellow-400" size={24} />
             </div>
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-[#111111] p-6 rounded-md">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Suspicious Score</p>
-                <p className={`text-2xl font-bold ${getSuspiciousScoreColor(analytics.suspicious_activity_score)}`}>
+                <p className={`text-2xl font-light ${getSuspiciousScoreColor(analytics.suspicious_activity_score)}`}>
                   {(analytics.suspicious_activity_score * 100).toFixed(0)}%
                 </p>
               </div>
@@ -242,7 +242,7 @@ export default function ExamAnalyticsPage() {
                 className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'steps'
                     ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-300'
                 }`}
               >
                 Step-by-Step Progress
@@ -252,7 +252,7 @@ export default function ExamAnalyticsPage() {
                 className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'events'
                     ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-300'
                 }`}
               >
                 Detailed Events
@@ -263,8 +263,8 @@ export default function ExamAnalyticsPage() {
 
         {/* Step Timeline */}
         {activeTab === 'steps' && (
-          <div className="bg-gray-800 p-6 rounded-lg mb-8">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
+          <div className="bg-[#111111] p-6 rounded-md mb-8">
+            <h2 className="text-xl font-medium mb-4 flex items-center">
               <User className="mr-2" size={20} />
               Student Progress Timeline
             </h2>
@@ -274,7 +274,7 @@ export default function ExamAnalyticsPage() {
                 {analytics.step_timeline.map((step, index) => (
                   <div
                     key={step.step}
-                    className={`flex items-start p-4 rounded-lg border-l-4 ${
+                    className={`flex items-start p-4 rounded-md border-l-4 ${
                       step.status === 'flagged' 
                         ? 'border-red-500 bg-red-900/20'
                         : step.status === 'completed'
@@ -282,8 +282,8 @@ export default function ExamAnalyticsPage() {
                         : 'border-yellow-500 bg-yellow-900/20'
                     }`}
                   >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center mr-4">
-                      <span className="text-sm font-bold">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-md bg-[#1A1A1A] flex items-center justify-center mr-4">
+                      <span className="text-sm font-light">
                         {step.status === 'flagged' ? '⚠️' : index + 1}
                       </span>
                     </div>
@@ -296,7 +296,7 @@ export default function ExamAnalyticsPage() {
                         </span>
                       </div>
                       
-                      <p className="text-gray-300 mt-1">{step.description}</p>
+                      <p className="text-gray-200 mt-1">{step.description}</p>
                       
                       {step.status === 'flagged' && step.priority && (
                         <div className="mt-2 flex items-center space-x-4">
@@ -319,7 +319,7 @@ export default function ExamAnalyticsPage() {
                           <summary className="text-sm text-blue-400 cursor-pointer hover:text-blue-300">
                             View Details
                           </summary>
-                          <pre className="text-xs text-gray-300 bg-gray-900 p-2 rounded mt-2 overflow-x-auto">
+                          <pre className="text-xs text-gray-200 bg-black p-2 rounded mt-2 overflow-x-auto">
                             {JSON.stringify(step.details, null, 2)}
                           </pre>
                         </details>
@@ -339,7 +339,7 @@ export default function ExamAnalyticsPage() {
 
         {/* Event Filter - Only for events tab */}
         {activeTab === 'events' && (
-        <div className="bg-gray-800 p-4 rounded-lg mb-6">
+        <div className="bg-[#111111] p-4 rounded-md mb-6">
           <div className="flex items-center space-x-4">
             <span className="text-sm font-medium">Filter Events:</span>
             <div className="flex space-x-2">
@@ -348,7 +348,7 @@ export default function ExamAnalyticsPage() {
                 className={`px-3 py-1 rounded text-sm transition-colors ${
                   filter === 'all' 
                     ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : 'bg-[#1A1A1A] text-gray-200 hover:bg-gray-600'
                 }`}
               >
                 All ({analytics.total_events})
@@ -358,7 +358,7 @@ export default function ExamAnalyticsPage() {
                 className={`px-3 py-1 rounded text-sm transition-colors ${
                   filter === 'flagged' 
                     ? 'bg-red-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : 'bg-[#1A1A1A] text-gray-200 hover:bg-gray-600'
                 }`}
               >
                 Flagged ({analytics.flagged_events})
@@ -368,7 +368,7 @@ export default function ExamAnalyticsPage() {
                 className={`px-3 py-1 rounded text-sm transition-colors ${
                   filter === 'high_priority' 
                     ? 'bg-yellow-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : 'bg-[#1A1A1A] text-gray-200 hover:bg-gray-600'
                 }`}
               >
                 High Priority ({analytics.high_priority_events})
@@ -380,8 +380,8 @@ export default function ExamAnalyticsPage() {
 
         {/* Detailed Timeline - Only for events tab */}
         {activeTab === 'events' && (
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4 flex items-center">
+        <div className="bg-[#111111] p-6 rounded-md">
+          <h2 className="text-xl font-medium mb-4 flex items-center">
             <Clock className="mr-2" size={20} />
             Event Timeline ({filteredEvents.length})
           </h2>
@@ -396,14 +396,14 @@ export default function ExamAnalyticsPage() {
               {filteredEvents.map((event, index) => (
                 <div
                   key={event.id}
-                  className={`border rounded-lg p-4 ${getEventColor(event)}`}
+                  className={`border rounded-md p-4 ${getEventColor(event)}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-3">
                       <span className="text-2xl">{getEventIcon(event.event_type)}</span>
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold capitalize">
+                          <h3 className="font-medium capitalize">
                             {event.event_type.replace(/_/g, ' ')}
                           </h3>
                           {event.is_flagged && (
@@ -415,7 +415,7 @@ export default function ExamAnalyticsPage() {
                         </p>
                         {event.event_data && Object.keys(event.event_data).length > 0 && (
                           <details className="mt-2">
-                            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-200">
                               View raw data
                             </summary>
                             <pre className="text-xs bg-black/20 p-2 rounded mt-1 overflow-x-auto">

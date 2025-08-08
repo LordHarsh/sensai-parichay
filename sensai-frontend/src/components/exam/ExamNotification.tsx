@@ -24,7 +24,7 @@ export default function ExamNotification({ notification, onRemove }: ExamNotific
   }, [notification.id, notification.type, notification.auto_dismiss, onRemove]);
 
   const getNotificationStyles = () => {
-    const baseStyles = "fixed top-4 right-4 max-w-md p-4 rounded-lg shadow-lg border z-50 transition-all duration-300 transform backdrop-blur-sm";
+    const baseStyles = "fixed top-4 right-4 max-w-md p-4 rounded-md shadow-lg border z-50 transition-all duration-300 transform backdrop-blur-sm";
     
     switch (notification.type) {
       case 'error':

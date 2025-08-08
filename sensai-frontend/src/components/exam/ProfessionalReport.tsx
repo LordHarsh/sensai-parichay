@@ -261,9 +261,9 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+      <div className="bg-[#111111] rounded-xl p-8 border border-gray-700">
         <div className="flex items-center justify-center space-x-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div className="animate-spin rounded-md h-8 w-8 border-b-2 border-blue-500"></div>
           <span className="text-white text-lg">Generating Professional Report...</span>
         </div>
       </div>
@@ -272,14 +272,14 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
   if (error && !evaluation) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-        <h3 className="text-2xl font-bold text-white mb-4">📊 Professional Exam Report</h3>
-        <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-4">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
+        <h3 className="text-2xl font-bold text-white mb-4">Professional Exam Report</h3>
+        <div className="bg-red-900/30 border border-red-700 rounded-md p-4 mb-4">
           <p className="text-red-300">{error}</p>
         </div>
         <button
           onClick={generateEvaluation}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
+          className="bg-white text-black hover:bg-gray-100 px-6 py-3 rounded-md font-medium"
         >
           Generate Report
         </button>
@@ -289,21 +289,21 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
   if (!evaluation) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-        <h3 className="text-2xl font-bold text-white mb-4">📊 Professional Exam Report</h3>
-        <p className="text-gray-300 mb-6">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
+        <h3 className="text-2xl font-bold text-white mb-4">Professional Exam Report</h3>
+        <p className="text-gray-200 mb-6">
           Generate a comprehensive performance analysis with visual insights and actionable recommendations.
         </p>
         <div className="flex space-x-4">
           <button
             onClick={loadStoredEvaluation}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium"
+            className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-md font-medium"
           >
             Load Previous Report
           </button>
           <button
             onClick={generateEvaluation}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
+            className="bg-white text-black hover:bg-gray-100 px-6 py-3 rounded-md font-medium"
           >
             Generate New Report
           </button>
@@ -315,25 +315,25 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className="text-2xl font-bold text-white">📊 Professional Exam Report</h3>
-            <p className="text-gray-300">{evaluation.exam_summary.exam_title}</p>
-            <p className="text-sm text-gray-400">Student: {evaluation.exam_summary.student_name}</p>
+            <h3 className="text-2xl font-bold text-white">Professional Exam Report</h3>
+            <p className="text-gray-200">{evaluation.exam_summary.exam_title}</p>
+            <p className="text-sm text-gray-200">Student: {evaluation.exam_summary.student_name}</p>
           </div>
           <div className="flex space-x-3">
             <button
               onClick={loadStoredEvaluation}
               disabled={isLoading}
-              className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium text-sm"
+              className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-400 text-white px-4 py-2 rounded-md font-medium text-sm"
             >
               Refresh
             </button>
             <button
               onClick={generateEvaluation}
               disabled={isLoading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm"
+              className="bg-white text-black hover:bg-gray-100 disabled:bg-gray-300 disabled:text-gray-500 px-4 py-2 rounded-md font-medium text-sm"
             >
               Regenerate
             </button>
@@ -342,28 +342,28 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
         {/* Key Metrics Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-700 rounded-lg p-4 text-center">
+          <div className="bg-[#1A1A1A] border border-gray-600 rounded-md p-4 text-center">
             <div className="text-3xl font-bold text-blue-400">{evaluation.exam_summary.score}%</div>
-            <div className="text-gray-300 text-sm">Overall Score</div>
+            <div className="text-gray-100 text-sm">Overall Score</div>
           </div>
-          <div className="bg-gray-700 rounded-lg p-4 text-center">
+          <div className="bg-[#1A1A1A] border border-gray-600 rounded-md p-4 text-center">
             <div className="text-3xl font-bold text-green-400">
               {evaluation.exam_summary.correct_answers}/{evaluation.exam_summary.total_questions}
             </div>
-            <div className="text-gray-300 text-sm">Questions Correct</div>
+            <div className="text-gray-100 text-sm">Questions Correct</div>
           </div>
-          <div className="bg-gray-700 rounded-lg p-4 text-center">
+          <div className="bg-[#1A1A1A] border border-gray-600 rounded-md p-4 text-center">
             <div 
               className="text-lg font-bold"
               style={{ color: getPerformanceColor(getPerformanceLevel(evaluation)) }}
             >
               {getPerformanceLevel(evaluation)}
             </div>
-            <div className="text-gray-300 text-sm">Performance Level</div>
+            <div className="text-gray-100 text-sm">Performance Level</div>
           </div>
-          <div className="bg-gray-700 rounded-lg p-4 text-center">
+          <div className="bg-[#1A1A1A] border border-gray-600 rounded-md p-4 text-center">
             <div className="text-lg font-bold text-orange-400">{getTimeTaken(evaluation)}</div>
-            <div className="text-gray-300 text-sm">Time Taken</div>
+            <div className="text-gray-100 text-sm">Time Taken</div>
           </div>
         </div>
       </div>
@@ -371,7 +371,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
       {/* Visual Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Score Visualization */}
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
           <h4 className="text-lg font-semibold text-white mb-4">Score Breakdown</h4>
           <ResponsiveContainer width="100%" height={200}>
             <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={getPerformanceRadialData(evaluation)}>
@@ -390,7 +390,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
         </div>
 
         {/* Question Analysis */}
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
           <h4 className="text-lg font-semibold text-white mb-4">Question Analysis</h4>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
@@ -415,7 +415,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
       </div>
 
       {/* Question-by-Question Performance */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
         <h4 className="text-lg font-semibold text-white mb-4">Question Performance</h4>
         <ResponsiveContainer width="100%" height={250}>
           <BarChart data={getQuestionBreakdownData(evaluation)}>
@@ -437,7 +437,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
       </div>
 
       {/* AI Analysis */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-lg font-semibold text-white">Comprehensive Analysis</h4>
           <div className="flex space-x-2">
@@ -455,17 +455,17 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
           {evaluation.comprehensive_analysis ? (
             <>
               {/* Overall Summary */}
-              <div className="bg-gray-700 rounded-lg p-4">
-                <h5 className="text-sm font-semibold text-blue-400 mb-3">📊 Overall Performance Summary</h5>
+              <div className="bg-gray-700 rounded-md p-4">
+                <h5 className="text-sm font-semibold text-blue-400 mb-3">Overall Performance Summary</h5>
                 <p className="text-gray-200 leading-relaxed mb-4">
                   {evaluation.comprehensive_analysis.overall_summary.overall_feedback}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h6 className="text-xs font-semibold text-green-400 mb-2">✅ Key Strengths</h6>
+                    <h6 className="text-xs font-semibold text-green-400 mb-2">Key Strengths</h6>
                     <ul className="space-y-1">
                       {evaluation.comprehensive_analysis.overall_summary.key_strengths.map((strength, index) => (
-                        <li key={index} className="text-gray-300 text-sm flex items-start">
+                        <li key={index} className="text-gray-200 text-sm flex items-start">
                           <span className="text-green-400 mr-2">•</span>
                           {strength}
                         </li>
@@ -476,7 +476,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
                     <h6 className="text-xs font-semibold text-orange-400 mb-2">⚠️ Areas for Improvement</h6>
                     <ul className="space-y-1">
                       {evaluation.comprehensive_analysis.overall_summary.key_weaknesses.map((weakness, index) => (
-                        <li key={index} className="text-gray-300 text-sm flex items-start">
+                        <li key={index} className="text-gray-200 text-sm flex items-start">
                           <span className="text-orange-400 mr-2">•</span>
                           {weakness}
                         </li>
@@ -488,8 +488,8 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
               {/* Knowledge Gaps */}
               {evaluation.comprehensive_analysis.knowledge_gaps.length > 0 && (
-                <div className="bg-gray-700 rounded-lg p-4">
-                  <h5 className="text-sm font-semibold text-red-400 mb-3">🎯 Knowledge Gaps Analysis</h5>
+                <div className="bg-gray-700 rounded-md p-4">
+                  <h5 className="text-sm font-semibold text-red-400 mb-3">Knowledge Gaps Analysis</h5>
                   <div className="space-y-3">
                     {evaluation.comprehensive_analysis.knowledge_gaps.map((gap, index) => (
                       <div key={index} className="border-l-4 border-red-500 pl-4">
@@ -502,7 +502,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
                             {gap.severity}
                           </span>
                         </div>
-                        <p className="text-gray-300 text-sm mb-2">{gap.description}</p>
+                        <p className="text-gray-200 text-sm mb-2">{gap.description}</p>
                         <p className="text-blue-300 text-sm italic">{gap.improvement_suggestions}</p>
                       </div>
                     ))}
@@ -512,7 +512,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
               {/* Learning Recommendations */}
               {evaluation.comprehensive_analysis.learning_recommendations && (
-                <div className="bg-gray-700 rounded-lg p-4">
+                <div className="bg-gray-700 rounded-md p-4">
                   <h5 className="text-sm font-semibold text-purple-400 mb-3">📚 Personalized Learning Plan</h5>
                   
                   {/* Immediate Actions */}
@@ -520,7 +520,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
                     <h6 className="text-xs font-semibold text-orange-400 mb-2">🚀 Immediate Actions</h6>
                     <ul className="space-y-1">
                       {evaluation.comprehensive_analysis.learning_recommendations.immediate_actions.map((action, index) => (
-                        <li key={index} className="text-gray-300 text-sm flex items-start">
+                        <li key={index} className="text-gray-200 text-sm flex items-start">
                           <span className="text-orange-400 mr-2">▶</span>
                           {action}
                         </li>
@@ -537,8 +537,8 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
                           <div className="text-xs font-medium text-blue-300 capitalize mb-2">{week.replace('_', ' ')}</div>
                           <ul className="space-y-1">
                             {activities.slice(0, 3).map((activity, actIndex) => (
-                              <li key={actIndex} className="text-gray-300 text-xs">
-                                • {activity}
+                              <li key={actIndex} className="text-gray-200 text-xs">
+                                {activity}
                               </li>
                             ))}
                           </ul>
@@ -562,7 +562,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
                           >
                             <div className="text-xs font-medium text-blue-300">{resource.type}</div>
                             <div className="text-xs text-white font-medium">{resource.title}</div>
-                            <div className="text-xs text-gray-300 mt-1">{resource.description}</div>
+                            <div className="text-xs text-gray-200 mt-1">{resource.description}</div>
                           </a>
                         ))}
                       </div>
@@ -573,7 +573,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
             </>
           ) : (
             /* Fallback AI Feedback */
-            <div className="bg-gray-700 rounded-lg p-4">
+            <div className="bg-gray-700 rounded-md p-4">
               <div className="text-gray-200 leading-relaxed whitespace-pre-wrap">
                 {evaluation.ai_feedback}
               </div>
@@ -584,11 +584,11 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
 
       {/* Recommendations */}
       {evaluation.recommendations && evaluation.recommendations.length > 0 && (
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
           <h4 className="text-lg font-semibold text-white mb-4">📈 Improvement Recommendations</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {evaluation.recommendations.map((rec, index) => (
-              <div key={index} className="bg-gray-700 rounded-lg p-4 border-l-4 border-blue-500">
+              <div key={index} className="bg-gray-700 rounded-md p-4 border-l-4 border-blue-500">
                 <div className="flex items-start">
                   <span className="text-blue-400 mr-3 text-xl">💡</span>
                   <span className="text-gray-200 text-sm">{rec}</span>
@@ -600,7 +600,7 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
       )}
 
       {/* Detailed Question Breakdown */}
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+      <div className="bg-[#111111] rounded-xl p-6 border border-gray-700">
         <h4 className="text-lg font-semibold text-white mb-4">Detailed Question Review</h4>
         <div className="space-y-4">
           {evaluation.question_breakdown.map((q, index) => (
@@ -628,19 +628,19 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
               </div>
               
               {q.question_text && (
-                <p className="text-gray-300 text-sm mb-2 italic bg-gray-700 p-2 rounded">
+                <p className="text-gray-200 text-sm mb-2 italic bg-gray-700 p-2 rounded">
                   {q.question_text}
                 </p>
               )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div className="bg-gray-700 p-2 rounded">
-                  <span className="text-gray-400 block mb-1">Your Answer:</span>
-                  <span className="text-gray-200">{q.user_answer || 'No answer provided'}</span>
+                <div className="bg-[#1A1A1A] border border-gray-600 p-3 rounded-md">
+                  <span className="text-gray-200 block mb-1 font-medium">Your Answer:</span>
+                  <span className="text-gray-100">{q.user_answer || 'No answer provided'}</span>
                 </div>
                 {q.correct_answer && (
-                  <div className="bg-gray-700 p-2 rounded">
-                    <span className="text-gray-400 block mb-1">Correct Answer:</span>
+                  <div className="bg-[#1A1A1A] border border-gray-600 p-3 rounded-md">
+                    <span className="text-gray-200 block mb-1 font-medium">Correct Answer:</span>
                     <span className="text-green-300">{q.correct_answer}</span>
                   </div>
                 )}
@@ -651,8 +651,8 @@ export default function ProfessionalExamReport({ examId, sessionId, userSession,
       </div>
 
       {/* Report Footer */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex justify-between items-center text-sm text-gray-400">
+      <div className="bg-[#111111] rounded-xl p-4 border border-gray-700">
+        <div className="flex justify-between items-center text-sm text-gray-200">
           <span>Report generated: {new Date(evaluation.generated_at).toLocaleString()}</span>
           <span>Analysis powered by {evaluation.model_used}</span>
         </div>

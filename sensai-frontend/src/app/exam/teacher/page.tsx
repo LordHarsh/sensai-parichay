@@ -96,7 +96,7 @@ export default function TeacherDashboardPage() {
       case 'completed': return 'text-green-400 bg-green-900/20';
       case 'active': return 'text-yellow-400 bg-yellow-900/20';
       case 'terminated': return 'text-red-400 bg-red-900/20';
-      default: return 'text-gray-400 bg-gray-800';
+      default: return 'text-gray-400 bg-[#111111]';
     }
   };
 
@@ -113,45 +113,44 @@ export default function TeacherDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="w-12 h-12 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-7xl mx-auto py-8 px-6">
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Teacher Dashboard</h1>
+              <h1 className="text-3xl font-light mb-2">Teacher Dashboard</h1>
               <p className="text-gray-400">
                 Create and manage exams. Share exam links with students - anyone who isn't the creator can take the exam.
               </p>
             </div>
-            <div className="flex items-center space-x-3">
+          </div>
+            <div className="flex items-center space-x-3 mt-4">
               <Link
                 href="/exam/generate"
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-6 py-3 rounded-lg font-semibold transition-all duration-200 flex items-center space-x-2"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-3 py-2 rounded-md font-medium transition-all duration-200 flex items-center space-x-2"
               >
-                <TrendingUp size={18} />
                 <span>Generate AI Exam</span>
               </Link>
               <Link
                 href="/exam/create"
-                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors"
+                className="bg-white text-black px-3 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
               >
                 Create Manual Exam
               </Link>
             </div>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Exams List */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
+          <div className="bg-[#111111] p-6 rounded-md">
+            <h2 className="text-xl font-medium mb-4 flex items-center">
               <Calendar className="mr-2" size={20} />
               Your Exams ({exams.length})
             </h2>
@@ -170,7 +169,7 @@ export default function TeacherDashboardPage() {
                   <span className="text-gray-500">or</span>
                   <Link
                     href="/exam/create"
-                    className="text-blue-400 hover:text-blue-300 underline"
+                    className="text-white hover:opacity-80 underline"
                   >
                     Create Manual Exam
                   </Link>
@@ -181,10 +180,10 @@ export default function TeacherDashboardPage() {
                 {exams.map((exam) => (
                   <div
                     key={exam.id}
-                    className="border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
+                    className="border border-gray-700 rounded-md p-4 hover:border-gray-700 transition-colors bg-[#111111]"
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-lg">{exam.title}</h3>
+                      <h3 className="font-medium text-lg">{exam.title}</h3>
                       <div className="flex items-center space-x-2">
                         <Clock size={16} className="text-gray-400" />
                         <span className="text-sm text-gray-400">{exam.duration}min</span>
@@ -207,8 +206,8 @@ export default function TeacherDashboardPage() {
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => copyExamLink(exam.id)}
-                          className={`hover:bg-gray-600 px-3 py-1 rounded text-sm transition-colors flex items-center ${
-                            copiedExamId === exam.id ? 'bg-green-700' : 'bg-gray-700'
+                          className={`hover:bg-[#1A1A1A] px-3 py-1 rounded-md text-sm transition-colors flex items-center ${
+                            copiedExamId === exam.id ? 'bg-green-700' : 'bg-[#1A1A1A]'
                           }`}
                           title="Share exam link"
                         >
@@ -226,14 +225,14 @@ export default function TeacherDashboardPage() {
                         </button>
                         <button
                           onClick={() => fetchExamSessions(exam.id)}
-                          className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm transition-colors flex items-center"
+                          className="bg-[#1A1A1A] hover:bg-[#222222] px-3 py-1 rounded-md text-sm transition-colors flex items-center"
                         >
                           <Users size={16} className="mr-1" />
                           Sessions
                         </button>
                         <Link
                           href={`/exam/${exam.id}/teacher`}
-                          className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition-colors flex items-center"
+                          className="bg-white text-black px-3 py-1 rounded-md text-sm hover:opacity-90 transition-opacity flex items-center font-medium"
                         >
                           <Eye size={16} className="mr-1" />
                           View
@@ -247,8 +246,8 @@ export default function TeacherDashboardPage() {
           </div>
 
           {/* Exam Sessions */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
+          <div className="bg-[#111111] p-6 rounded-md border border-gray-700">
+            <h2 className="text-xl font-medium mb-4 flex items-center">
               <Users className="mr-2" size={20} />
               Exam Sessions
             </h2>
@@ -274,11 +273,11 @@ export default function TeacherDashboardPage() {
                     {examSessions.map((session) => (
                       <div
                         key={session.id}
-                        className="border border-gray-700 rounded-lg p-3 hover:border-gray-600 transition-colors"
+                        className="border border-gray-700 rounded-md p-3 hover:border-gray-700 transition-colors"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{session.user_display || session.user_email || `User ${session.user_id}`}</span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
+                          <span className={`px-2 py-1 rounded-md text-xs font-medium ${getStatusColor(session.status)}`}>
                             {session.status}
                           </span>
                         </div>

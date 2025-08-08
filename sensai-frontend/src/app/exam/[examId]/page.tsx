@@ -319,14 +319,17 @@ export default function ExamPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading exam...</div>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-white text-xl">Loading exam...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-black">
       <ExamHeader 
         examTitle={examData?.title || 'Exam'}
         timeRemaining={timeRemaining}
@@ -338,18 +341,12 @@ export default function ExamPage() {
       />
       
       <div className="flex h-[calc(100vh-80px)]">
-        <div className="flex-1 flex flex-col bg-gray-900">
+        <div className="flex-1 flex flex-col bg-black">
           {!examStarted && !examEnded ? (
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center max-w-2xl mx-auto">
-                <div className="w-16 h-16 bg-blue-900/50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-                
-                <h2 className="text-3xl font-bold text-gray-100 mb-4">{examData?.title}</h2>
-                <p className="text-lg text-gray-300 mb-8 leading-relaxed">{examData?.description}</p>
+                <h2 className="text-3xl font-light text-gray-100 mb-4">{examData?.title}</h2>
+                <p className="text-lg text-gray-200 mb-8 leading-relaxed">{examData?.description}</p>
                 
                 <div className="flex items-center justify-center space-x-8 text-sm text-gray-400 mb-8">
                   <div className="flex items-center space-x-2">
@@ -366,35 +363,25 @@ export default function ExamPage() {
                   </div>
                 </div>
                 
-                <div className="bg-amber-900/20 border border-amber-500/50 rounded-lg p-4 mb-8">
-                  <div className="flex items-center space-x-2 text-amber-300">
-                  <p className="text-sm text-amber-400 mt-1">
+                <div className="bg-amber-900/20 border border-amber-500/50 rounded-md p-4 mb-8">
+                  <p className="text-sm text-amber-400">
                     This exam will be recorded for monitoring purposes. Please ensure you have a stable internet connection and camera access.
                   </p>
-                  </div>
                 </div>
                 
                 <button
                   onClick={startExam}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold transition-all duration-200 shadow-sm hover:shadow-md inline-flex items-center space-x-2"
+                  className="bg-white text-black hover:opacity-90 px-8 py-4 rounded-md font-medium transition-all duration-200"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.01M15 10h1.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>Start Exam</span>
+                  Start Exam
                 </button>
               </div>
             </div>
           ) : examEnded ? (
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center max-w-md mx-auto">
-                <div className="w-16 h-16 bg-emerald-900/50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-100 mb-4">Exam Completed!</h2>
-                <p className="text-gray-300 leading-relaxed">Your answers have been submitted successfully and are being processed for grading.</p>
+                <h2 className="text-2xl font-light text-gray-100 mb-4">Exam Completed</h2>
+                <p className="text-gray-200 leading-relaxed">Your answers have been submitted successfully and are being processed for grading.</p>
               </div>
             </div>
           ) : (
@@ -412,7 +399,7 @@ export default function ExamPage() {
           )}
         </div>
         
-        <div className="w-80 bg-gray-800 border-l border-gray-700">
+        <div className="w-80 bg-[#111111] border-l border-gray-700">
           <VideoRecorder
             isRecording={isRecording}
             examId={examId as string}

@@ -14,7 +14,7 @@ interface VideoRecorderWrapperProps {
 const VideoRecorder = dynamic(() => import("./VideoRecorder"), {
   ssr: false,
   loading: () => (
-    <div className="h-full bg-gray-900 border-l border-gray-700 p-6">
+    <div className="h-full bg-black border-l border-gray-700 p-6">
       <div className="flex flex-col h-full">
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-gray-100 mb-2">Video Monitor</h3>
@@ -41,7 +41,7 @@ export default function VideoRecorderWrapper({ isRecording, examId, websocket }:
 
   if (!isClient) {
     return (
-      <div className="h-full bg-gray-900 border-l border-gray-700 p-6">
+      <div className="h-full bg-black border-l border-gray-700 p-6">
         <div className="flex flex-col h-full">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-100 mb-2">Video Monitor</h3>

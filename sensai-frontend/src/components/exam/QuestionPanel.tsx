@@ -40,7 +40,7 @@ export default function QuestionPanel({
 
   if (!currentQuestion) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-900">
+      <div className="flex-1 flex items-center justify-center bg-black">
         <div className="text-gray-400">No questions available</div>
       </div>
     );
@@ -54,7 +54,7 @@ export default function QuestionPanel({
             {currentQuestion.options?.map((option, index) => (
               <label
                 key={option.id}
-                className="flex items-start space-x-3 p-4 rounded-lg border border-gray-700 hover:border-gray-600 hover:bg-gray-800/50 cursor-pointer transition-all duration-200 group"
+                className="flex items-start space-x-3 p-4 rounded-md border border-gray-700 hover:border-gray-500 hover:bg-[#1A1A1A] cursor-pointer transition-all duration-200 group"
               >
                 <div className="relative flex-shrink-0 mt-0.5">
                   <input
@@ -67,15 +67,15 @@ export default function QuestionPanel({
                   />
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                     answers[currentQuestion.id] === option.id
-                      ? 'border-blue-500 bg-blue-500' 
-                      : 'border-gray-500 group-hover:border-blue-400'
+                      ? 'border-white bg-white' 
+                      : 'border-gray-400 group-hover:border-gray-200'
                   }`}>
                     {answers[currentQuestion.id] === option.id && (
-                      <div className="w-2 h-2 rounded-full bg-white"></div>
+                      <div className="w-2 h-2 rounded-full bg-black"></div>
                     )}
                   </div>
                 </div>
-                <span className="text-gray-100 leading-relaxed">{option.text}</span>
+                <span className="text-white leading-relaxed">{option.text}</span>
               </label>
             ))}
           </div>
@@ -89,7 +89,7 @@ export default function QuestionPanel({
               onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
               placeholder="Enter your answer here..."
               rows={6}
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none shadow-sm"
+              className="w-full bg-[#111111] border border-gray-700 rounded-md p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent resize-none shadow-sm"
             />
             {websocket && examId && (
               <AdvancedCheatingDetector
@@ -113,7 +113,7 @@ export default function QuestionPanel({
               onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
               placeholder="Write your code here..."
               rows={12}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm resize-none shadow-sm"
+              className="w-full bg-black border border-gray-700 rounded-md p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent font-mono text-sm resize-none shadow-sm"
             />
             <div className="text-xs text-gray-400">
               Language: {currentQuestion.metadata?.language || 'Plain text'}
@@ -139,7 +139,7 @@ export default function QuestionPanel({
               onChange={(e) => onAnswerChange(currentQuestion.id, e.target.value)}
               placeholder="Write your essay here..."
               rows={15}
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none shadow-sm"
+              className="w-full bg-[#111111] border border-gray-700 rounded-md p-4 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent resize-none shadow-sm"
             />
             <div className="text-xs text-gray-400">
               Word count: {(answers[currentQuestion.id] || '').split(/\s+/).filter(word => word.length > 0).length}
@@ -177,13 +177,13 @@ export default function QuestionPanel({
   };
 
   return (
-    <div className="flex-1 flex bg-gray-900">
+    <div className="flex-1 flex bg-black">
       <div className="flex-1 p-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <span className="bg-blue-600 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+                <span className="bg-white text-black px-3 py-1.5 rounded-md text-sm font-medium">
                   Question {currentIndex + 1} of {questions.length}
                 </span>
                 <div className="flex items-center space-x-2 text-gray-400">
@@ -193,13 +193,13 @@ export default function QuestionPanel({
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <Circle className="w-4 h-4 text-amber-400" />
-                <span className="text-gray-300">
+                <span className="text-gray-200">
                   {currentQuestion.points} {currentQuestion.points === 1 ? 'point' : 'points'}
                 </span>
               </div>
             </div>
             
-            <h2 className="text-2xl font-medium text-gray-100 mb-6 leading-relaxed">
+            <h2 className="text-2xl font-light text-gray-100 mb-6 leading-relaxed">
               {currentQuestion.question}
             </h2>
           </div>
@@ -210,7 +210,7 @@ export default function QuestionPanel({
             <button
               onClick={() => onQuestionChange(currentIndex - 1)}
               disabled={currentIndex === 0}
-              className="flex items-center space-x-2 px-4 py-2.5 rounded-lg border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 hover:bg-gray-800/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              className="flex items-center space-x-2 px-4 py-2.5 rounded-md border border-gray-700 text-gray-200 hover:text-white hover:border-gray-700 hover:bg-[#222222] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
               <ChevronLeft className="w-5 h-5" />
               <span>Previous</span>
@@ -220,7 +220,7 @@ export default function QuestionPanel({
               <button
                 onClick={onSubmitExam}
                 disabled={isSubmitting}
-                className="flex items-center space-x-2 px-6 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                className="flex items-center space-x-2 px-6 py-2.5 rounded-md bg-emerald-500 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm font-medium"
               >
                 {isSubmitting ? (
                   <>
@@ -238,7 +238,7 @@ export default function QuestionPanel({
               <button
                 onClick={() => onQuestionChange(currentIndex + 1)}
                 disabled={currentIndex === questions.length - 1}
-                className="flex items-center space-x-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                className="flex items-center space-x-2 px-4 py-2.5 rounded-md bg-white text-black hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm font-medium"
               >
                 <span>Next</span>
                 <ChevronRight className="w-5 h-5" />
@@ -249,8 +249,8 @@ export default function QuestionPanel({
       </div>
 
       {/* Question Navigation Sidebar */}
-      <div className="w-64 bg-gray-800 border-l border-gray-700 p-4">
-        <h3 className="text-lg font-semibold text-gray-100 mb-4">Questions</h3>
+      <div className="w-64 bg-[#111111] border-l border-gray-700 p-4">
+        <h3 className="text-lg font-light text-white mb-4">Questions</h3>
         <div className="space-y-2">
           {questions.map((question, index) => {
             const isAnswered = answers[question.id];
@@ -260,12 +260,12 @@ export default function QuestionPanel({
               <button
                 key={question.id}
                 onClick={() => onQuestionChange(index)}
-                className={`w-full text-left p-3 rounded-lg border transition-all duration-200 ${
+                className={`w-full text-left p-3 rounded-md border transition-all duration-200 ${
                   isCurrent
-                    ? 'border-blue-500 bg-blue-900/50 text-white'
+                    ? 'border-white bg-white/15 text-white'
                     : isAnswered
-                    ? 'border-emerald-500 bg-emerald-900/20 text-gray-100 hover:bg-emerald-900/30'
-                    : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-700/50'
+                    ? 'border-emerald-400 bg-emerald-900/25 text-white hover:bg-emerald-900/35'
+                    : 'border-gray-700 text-gray-200 hover:border-gray-600 hover:bg-[#1A1A1A] hover:text-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -275,7 +275,7 @@ export default function QuestionPanel({
                       <Check className="w-4 h-4 text-emerald-400" />
                     )}
                     {isCurrent && (
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                     )}
                   </div>
                 </div>
@@ -287,13 +287,13 @@ export default function QuestionPanel({
           })}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-600">
-          <div className="text-sm text-gray-400 mb-2">
+        <div className="mt-6 pt-4 border-t border-gray-700">
+          <div className="text-sm text-gray-200 mb-2">
             Progress: {Object.keys(answers).length} of {questions.length} answered
           </div>
-          <div className="w-full bg-gray-700 rounded-full h-2">
+          <div className="w-full bg-gray-800 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-white h-2 rounded-full transition-all duration-300"
               style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%` }}
             ></div>
           </div>
