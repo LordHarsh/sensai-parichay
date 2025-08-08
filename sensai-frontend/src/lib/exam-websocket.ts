@@ -16,6 +16,7 @@ export class ExamWebSocket {
   public onVideoDataAck: ((timestamp: number, status: string) => void) | null = null;
   public onVideoControlAck: ((status: string) => void) | null = null;
   public onSessionEstablished: ((sessionId: string) => void) | null = null;
+  public onSurpriseViva: ((vivaData: { questions: any[], time_limit: number, session_id: string }) => void) | null = null;
 
   constructor(examId: string, userId: string, token?: string) {
     this.examId = examId;
@@ -170,8 +171,20 @@ export class ExamWebSocket {
         console.error('WebSocket error from server:', data.message);
         break;
         
+      case 'surprise_viva':
+        console.log('Surprise viva triggered:', data);
+        if (this.onSurpriseViva) {
+          this.onSurpriseViva({
+            questions: data.questions,
+            time_limit: data.time_limit,
+            session_id: data.session_id
+          });
+        }
+        break;
+        
       default:
         console.log('Received unknown message type:', data.type, data);
+        break;
     }
   }
 
@@ -202,8 +215,6 @@ export class ExamWebSocket {
       console.warn('Empty video data blob, skipping');
       return;
     }
-
-    console.log(`Sending video data: ${data.size} bytes, type: ${data.type}`);
 
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -241,9 +252,6 @@ export class ExamWebSocket {
           return;
         }
         
-        console.log(`Converted to base64: ${base64Data.length} characters (original: ${data.size} bytes)`);
-        console.log(`First 50 chars: ${base64Data.substring(0, 50)}`);
-        
         this.sendMessage({
           type: 'video_chunk',
           timestamp,
@@ -278,6 +286,14 @@ export class ExamWebSocket {
   ping(): void {
     this.sendMessage({
       type: 'ping',
+      timestamp: Date.now()
+    });
+  }
+
+  sendVivaCompletion(vivaSessionId: string): void {
+    this.sendMessage({
+      type: 'viva_completed',
+      session_id: vivaSessionId,
       timestamp: Date.now()
     });
   }

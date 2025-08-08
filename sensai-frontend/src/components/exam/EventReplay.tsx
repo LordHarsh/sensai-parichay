@@ -149,13 +149,6 @@ export default function EventReplay({ sessionId, events, examId }: EventReplayPr
       {/* Controls */}
       <div className="flex items-center justify-between bg-gray-700 p-4 rounded-md">
         <div className="flex items-center space-x-4">
-          <button
-            onClick={handlePlay}
-            className="flex items-center space-x-2 hover:opacity-90 px-4 py-2 rounded transition-colors"
-          >
-            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-            <span>{isPlaying ? 'Pause' : 'Play'}</span>
-          </button>
           
           <button
             onClick={handleRestart}
