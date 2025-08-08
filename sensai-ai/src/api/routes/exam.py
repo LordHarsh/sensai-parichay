@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 from api.models import (
     CreateExamRequest,
+    GenerateAIExamRequest,
     ExamSubmissionRequest, 
     ExamConfiguration,
     ExamSession,
@@ -24,6 +25,7 @@ from api.models import (
 )
 from api.utils.db import get_new_db_connection
 from api.utils.event_scoring import EventScorer
+from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai
 from api.config import (
     exams_table_name,
     exam_sessions_table_name,
@@ -74,6 +76,227 @@ async def create_exam(exam_request: CreateExamRequest, user_id: int = Header(...
     except Exception as e:
         print(f"Error creating exam: {e}")
         raise HTTPException(status_code=500, detail="Failed to create exam")
+
+
+@router.post("/generate", response_model=dict)
+async def generate_ai_exam(
+    exam_request: GenerateAIExamRequest, 
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate an AI-based exam using OpenAI GPT-4o.
+    
+    This endpoint takes in a title, description, and max number of questions,
+    then uses OpenAI to generate comprehensive exam questions and creates
+    the exam with the creator as the teacher.
+    """
+    try:
+        # Validate inputs
+        if not exam_request.title or not exam_request.description:
+            raise HTTPException(status_code=400, detail="Title and description are required")
+        
+        if exam_request.max_questions < 1 or exam_request.max_questions > 50:
+            raise HTTPException(status_code=400, detail="Number of questions must be between 1 and 50")
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
+        
+        # Generate questions using OpenAI
+        try:
+            generated_content = await generate_exam_questions_with_openai(
+                api_key=openai_api_key,
+                title=exam_request.title,
+                description=exam_request.description,
+                max_questions=exam_request.max_questions,
+                model="gpt-4o",
+                course_id=exam_request.course_id
+            )
+        except Exception as e:
+            print(f"Error generating questions with OpenAI: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate exam questions: {str(e)}")
+        
+        # Extract questions and metadata from generated content
+        questions = generated_content.get("questions", [])
+        if not questions:
+            raise HTTPException(status_code=500, detail="No questions were generated")
+        
+        exam_metadata = generated_content.get("exam_metadata", {})
+        
+        # Auto-calculate duration if not provided (based on suggested duration from AI or default estimation)
+        duration = exam_request.duration
+        if not duration:
+            # Use AI's suggested duration or estimate based on question types and points
+            duration = exam_metadata.get("suggested_duration", 60)
+            if not duration:
+                # Fallback estimation: ~2-3 minutes per question on average
+                duration = max(30, len(questions) * 3)
+        
+        # Convert generated questions to the expected format
+        formatted_questions = []
+        for i, q in enumerate(questions):
+            # Ensure each question has a unique ID
+            question_id = q.get("id", f"q{i+1}")
+            
+            # Build question object matching ExamQuestion schema
+            formatted_question = {
+                "id": question_id,
+                "type": q.get("type", "text"),
+                "question": q.get("question", ""),
+                "points": q.get("points", 1),
+                "time_limit": q.get("time_limit"),
+                "metadata": q.get("metadata", {})
+            }
+            
+            # Add type-specific fields
+            if q.get("type") == "multiple_choice" and q.get("options"):
+                formatted_question["options"] = [
+                    {
+                        "id": f"opt_{question_id}_{idx}",
+                        "text": option,
+                        "is_correct": option == q.get("correct_answer", "")
+                    }
+                    for idx, option in enumerate(q.get("options", []))
+                ]
+            
+            if q.get("correct_answer"):
+                formatted_question["correct_answer"] = q.get("correct_answer")
+            
+            formatted_questions.append(formatted_question)
+        
+        # Create default settings and monitoring if not provided
+        default_settings = {
+            "allow_tab_switch": False,
+            "max_tab_switches": 2,
+            "allow_copy_paste": False,
+            "require_camera": True,
+            "require_microphone": False,
+            "fullscreen_required": True,
+            "auto_submit": True,
+            "shuffle_questions": False,
+            "show_timer": True
+        }
+        
+        default_monitoring = {
+            "video_recording": True,
+            "audio_recording": True,
+            "screen_recording": False,
+            "keystroke_logging": True,
+            "mouse_tracking": True,
+            "face_detection": True,
+            "gaze_tracking": True,
+            "network_monitoring": True
+        }
+        
+        settings = {**default_settings, **exam_request.settings}
+        monitoring = {**default_monitoring, **exam_request.monitoring}
+        
+        # Generate exam ID
+        exam_id = str(uuid.uuid4())
+        
+        # Save to database
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            await cursor.execute(
+                f"""INSERT INTO {exams_table_name} 
+                    (id, title, description, duration, questions, settings, monitoring, org_id, created_by, role, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    exam_id,
+                    exam_request.title,
+                    exam_request.description,
+                    duration,
+                    json.dumps(formatted_questions),
+                    json.dumps(settings),
+                    json.dumps(monitoring),
+                    exam_request.org_id,
+                    user_id,
+                    'teacher',  # Creator is always teacher
+                    datetime.now(),
+                    datetime.now()
+                )
+            )
+            
+            await conn.commit()
+        
+        # Return success response with exam details
+        response = {
+            "id": exam_id,
+            "message": "AI exam generated and created successfully",
+            "exam_details": {
+                "title": exam_request.title,
+                "description": exam_request.description,
+                "duration": duration,
+                "questions_generated": len(formatted_questions),
+                "total_points": sum(q.get("points", 1) for q in formatted_questions),
+                "question_types": exam_metadata.get("question_distribution", {}),
+                "topics_covered": exam_metadata.get("topics_covered", []),
+                "difficulty_level": exam_metadata.get("difficulty_level", "Medium")
+            },
+            "ai_metadata": generated_content.get("generation_metadata", {})
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating AI exam: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate AI exam")
+
+
+@router.post("/generate-description", response_model=dict)
+async def generate_exam_description(
+    request: dict,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate exam description based on title using OpenAI GPT-4o.
+    
+    This endpoint takes in a title and returns an AI-generated description
+    that matches the subject matter and scope indicated by the title.
+    """
+    try:
+        title = request.get("title", "").strip()
+        course_id = request.get("course_id")  # Optional course ID
+        
+        if not title:
+            raise HTTPException(status_code=400, detail="Title is required")
+        
+        if len(title) < 3:
+            raise HTTPException(status_code=400, detail="Title must be at least 3 characters long")
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
+        
+        # Generate description using OpenAI
+        try:
+            generated_description = await generate_exam_description_with_openai(
+                api_key=openai_api_key,
+                title=title,
+                model="gpt-4o",
+                course_id=course_id
+            )
+        except Exception as e:
+            print(f"Error generating description with OpenAI: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate description: {str(e)}")
+        
+        return {
+            "success": True,
+            "title": title,
+            "description": generated_description,
+            "message": "Description generated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating description: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate description")
 
 
 @router.get("/{exam_id}", response_model=dict)
@@ -239,7 +462,7 @@ async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: 
                             exam_id, 
                             user_id,
                             datetime.now(),
-                            'active',
+                            'act    ive',
                             json.dumps({}),
                             datetime.now(),
                             datetime.now()
