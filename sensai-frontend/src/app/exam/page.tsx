@@ -129,7 +129,7 @@ export default function ExamListPage() {
           </div>
           
           <Link
-            href="/exam/create"
+            href="/exam/teacher"
             className="bg-white text-black px-6 py-2 rounded-md font-medium hover:opacity-90 transition-opacity"
           >
             Create New Exam

@@ -30,6 +30,7 @@ from api.config import (
     exams_table_name,
     exam_sessions_table_name,
     exam_events_table_name,
+    surprise_viva_questions_table_name,
 )
 
 
@@ -568,6 +569,31 @@ async def create_exam_events_table(cursor):
     )
 
 
+async def create_surprise_viva_questions_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {surprise_viva_questions_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                original_question_id TEXT,
+                question_text TEXT NOT NULL,
+                expected_answer TEXT,
+                user_answer TEXT,
+                is_correct BOOLEAN,
+                confidence_score REAL DEFAULT 0.0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                answered_at DATETIME,
+                FOREIGN KEY (session_id) REFERENCES {exam_sessions_table_name}(id) ON DELETE CASCADE
+            )""")
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_surprise_viva_session_id ON {surprise_viva_questions_table_name} (session_id)"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX idx_surprise_viva_answered ON {surprise_viva_questions_table_name} (answered_at)"""
+    )
+
+
 
 async def init_db():
     print("Initializing database...")
@@ -649,6 +675,8 @@ async def init_db():
             await create_exam_sessions_table(cursor)
 
             await create_exam_events_table(cursor)
+
+            await create_surprise_viva_questions_table(cursor)
             
 
             await conn.commit()

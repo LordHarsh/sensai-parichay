@@ -16,10 +16,14 @@ from api.models import (
 )
 from api.config import data_root_dir
 from api.utils.db import get_new_db_connection
+from api.utils.event_scoring import EventScorer
+from api.llm import generate_surprise_viva_questions
+from api.settings import settings
 from api.db import (
     exams_table_name,
     exam_sessions_table_name,
-    exam_events_table_name
+    exam_events_table_name,
+    surprise_viva_questions_table_name
 )
 
 router = APIRouter()
@@ -133,6 +137,195 @@ class ExamConnectionManager:
 
 
 exam_manager = ExamConnectionManager()
+
+# Track viva sessions and suspicious activity
+class VivaSessionTracker:
+    def __init__(self):
+        self.session_scores: Dict[str, float] = {}  # session_id -> cumulative suspicion score
+        self.session_flags: Dict[str, int] = {}     # session_id -> flag count
+        self.viva_triggered: Set[str] = set()       # sessions where viva was already triggered
+        self.viva_in_progress: Set[str] = set()     # sessions with active viva
+        self.viva_threshold = 3.0                   # cumulative score threshold
+        self.flag_threshold = 3                     # number of flagged events threshold
+
+    def add_event_score(self, session_id: str, priority: int, confidence: float, is_flagged: bool):
+        """Add event score to session tracking"""
+        if session_id not in self.session_scores:
+            self.session_scores[session_id] = 0.0
+            self.session_flags[session_id] = 0
+        
+        # Weight score by priority (higher priority = more suspicious)
+        weighted_score = confidence * priority
+        self.session_scores[session_id] += weighted_score
+        
+        if is_flagged:
+            self.session_flags[session_id] += 1
+        
+        print(f"📊 Session {session_id}: Score={self.session_scores[session_id]:.2f}, Flags={self.session_flags[session_id]}, Viva In Progress: {session_id in self.viva_in_progress}")
+        
+    def should_trigger_viva(self, session_id: str) -> bool:
+        """Check if viva should be triggered for this session"""
+        # Don't trigger if already triggered or in progress
+        if session_id in self.viva_triggered or session_id in self.viva_in_progress:
+            return False
+            
+        score = self.session_scores.get(session_id, 0.0)
+        flags = self.session_flags.get(session_id, 0)
+        
+        # Trigger if either threshold is met
+        return score >= self.viva_threshold or flags >= self.flag_threshold
+    
+    def mark_viva_triggered(self, session_id: str):
+        """Mark that viva was triggered for this session"""
+        self.viva_triggered.add(session_id)
+        self.viva_in_progress.add(session_id)
+        print(f"🚨 Viva triggered for session {session_id}")
+    
+    def mark_viva_completed(self, session_id: str):
+        """Mark that viva was completed for this session"""
+        self.viva_in_progress.discard(session_id)
+        print(f"✅ Viva completed for session {session_id}")
+    
+    def is_viva_in_progress(self, session_id: str) -> bool:
+        """Check if viva is currently in progress for this session"""
+        return session_id in self.viva_in_progress
+
+viva_tracker = VivaSessionTracker()
+
+
+async def trigger_surprise_viva(session_id: str, exam_id: str, suspicious_events: list):
+    """Generate and send surprise viva questions based on suspicious activity"""
+    try:
+        print(f"🚨 Triggering surprise viva for session {session_id} due to suspicious activity")
+        
+        # Double-check that viva is not already in progress
+        if viva_tracker.is_viva_in_progress(session_id):
+            print(f"⚠️  Viva already in progress for session {session_id}, skipping")
+            return False
+        
+        # Mark viva as in progress NOW to prevent duplicate triggers
+        viva_tracker.mark_viva_triggered(session_id)
+        print(f"🔒 Viva marked as in progress for session {session_id}")
+        
+        # Get exam details for context
+        async with get_new_db_connection() as conn:
+            print(f"Fetching exam data for {exam_id}...")
+            cursor = await conn.cursor()
+            
+            # Get exam data
+            await cursor.execute(
+                f"""SELECT title, description, questions FROM {exams_table_name} WHERE id = ?""",
+                (exam_id,)
+            )
+            exam_data = await cursor.fetchone()
+            print(f"Exam data for {exam_id}: {exam_data}")  
+            
+            if not exam_data:
+                print(f"❌ Exam {exam_id} not found for viva generation")
+                return False
+                
+            exam_title = exam_data[0]
+            exam_description = exam_data[1] 
+            exam_questions = json.loads(exam_data[2]) if exam_data[2] else []
+        
+        # Prepare context for viva generation
+        exam_context = {
+            'title': exam_title,
+            'description': exam_description,
+            'cheating_evidence': [
+                {
+                    'type': event.get('type', 'unknown'),
+                    'description': event.get('description', ''),
+                    'confidence': event.get('confidence', 0)
+                }
+                for event in suspicious_events[-5:]  # Last 5 suspicious events
+            ]
+        }
+        
+        # Get OpenAI API key
+        api_key = settings.openai_api_key
+        if not api_key:
+            print(f"❌ OpenAI API key not configured for viva generation")
+            # Clean up the in-progress state since we can't generate questions
+            viva_tracker.mark_viva_completed(session_id)
+            return False
+        
+        # Generate viva questions using OpenAI
+        print(f"🔄 Generating viva questions using OpenAI...")
+        try:
+            viva_result = await generate_surprise_viva_questions(
+                api_key=api_key,
+                original_questions=exam_questions,
+                exam_context=exam_context
+            )
+            print(f"📝 Viva generation successful!")
+        except Exception as llm_error:
+            print(f"❌ Error calling OpenAI for viva generation: {llm_error}")
+            # Clean up the in-progress state since generation failed
+            viva_tracker.mark_viva_completed(session_id)
+            return False
+        
+        viva_questions = viva_result.get("viva_questions", [])
+        print(f"Generated {len(viva_questions)} viva questions for session {session_id}")
+        
+        if not viva_questions:
+            print(f"❌ Failed to generate viva questions for session {session_id}")
+            # Clean up the in-progress state since no questions were generated
+            viva_tracker.mark_viva_completed(session_id)
+            return False
+        
+        # Store viva questions in database
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            viva_session_id = f"viva_{session_id}_{int(datetime.now().timestamp())}"
+            stored_questions = []
+            
+            # Insert each question individually
+            for question in viva_questions:
+                await cursor.execute(
+                    f"""INSERT INTO {surprise_viva_questions_table_name} 
+                        (session_id, original_question_id, question_text, expected_answer, confidence_score)
+                        VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        session_id,  # Use the actual session_id, not viva_session_id
+                        question.get("id", f"viva_{int(datetime.now().timestamp())}"),
+                        question.get("question", ""),
+                        question.get("expected_answer", ""),
+                        0.9  # High confidence for generated questions
+                    )
+                )
+                
+                # Get the inserted ID and add to stored questions
+                viva_id = cursor.lastrowid
+                stored_questions.append({
+                    "viva_id": viva_id,
+                    "question": question.get("question", ""),
+                    "expected_answer": question.get("expected_answer", ""),
+                    "time_limit": question.get("time_limit", 180)
+                })
+            
+            await conn.commit()
+            print(f"💾 Stored {len(stored_questions)} viva questions in database")
+            
+        # Send viva questions via WebSocket
+        await exam_manager.send_to_session(session_id, {
+            "type": "surprise_viva",
+            "questions": stored_questions,  # Use the stored questions format
+            "time_limit": 300,  # 5 minutes total
+            "session_id": session_id,  # Use original session_id, not viva_session_id
+            "message": "Suspicious activity detected. Please answer these verification questions to continue.",
+            "instructions": viva_result.get("instructions", "Answer these questions to verify your understanding.")
+        })
+        
+        print(f"✅ Surprise viva sent to session {session_id} with {len(stored_questions)} questions")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error triggering surprise viva: {e}")
+        # Clean up the in-progress state if there was an unexpected error
+        viva_tracker.mark_viva_completed(session_id)
+        return False
 
 
 async def save_exam_event(session_id: str, event: dict):
@@ -360,7 +553,15 @@ async def websocket_exam_session(websocket: WebSocket, exam_id: str, token: str 
                 try:
                     data = await websocket.receive_text()
                     message = json.loads(data)
-                    print(f"Received message: {message}")
+                    
+                    # Log message type but avoid printing large video data
+                    message_type = message.get("type", "unknown")
+                    if message_type == "video_chunk":
+                        data_size = message.get("size", 0)
+                        is_final = message.get("is_final", False)
+                        print(f"Received video_chunk: {data_size} bytes, final={is_final}")
+                    else:
+                        print(f"Received message: {message_type}")
                     
                     # Handle message and update chunk counter if needed
                     result = await handle_exam_message(websocket, session_id, actual_user_id, exam_id, message, video_dir, chunk_counter)
@@ -403,6 +604,51 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
         event = message.get("event")
         if event:
             await save_exam_event(session_id, event)
+            
+            # Score the event for suspicion analysis
+            scorer = EventScorer()
+            event_type = event.get("type", "unknown")
+            event_data = event.get("data", {})
+            
+            priority, confidence_score, is_flagged, description = scorer.calculate_event_score(
+                event_type, event_data
+            )
+            
+            # Track suspicious activity
+            viva_tracker.add_event_score(session_id, priority, confidence_score, is_flagged)
+            
+            # Check if we should trigger surprise viva
+            if viva_tracker.should_trigger_viva(session_id):
+                # Get recent suspicious events for context
+                async with get_new_db_connection() as conn:
+                    cursor = await conn.cursor()
+                    await cursor.execute(
+                        f"""SELECT event_type, event_data, timestamp FROM {exam_events_table_name} 
+                            WHERE session_id = ? 
+                            ORDER BY timestamp DESC 
+                            LIMIT 10""",
+                        (session_id,)
+                    )
+                    recent_events = await cursor.fetchall()
+                
+                suspicious_events = []
+                for event_row in recent_events:
+                    evt_type = event_row[0]
+                    evt_data = json.loads(event_row[1]) if isinstance(event_row[1], str) else event_row[1]
+                    evt_timestamp = event_row[2]
+                    
+                    evt_priority, evt_confidence, evt_flagged, evt_desc = scorer.calculate_event_score(evt_type, evt_data)
+                    if evt_flagged or evt_confidence > 0.7:
+                        suspicious_events.append({
+                            'type': evt_type,
+                            'data': evt_data,
+                            'timestamp': evt_timestamp,
+                            'confidence': evt_confidence,
+                            'description': evt_desc
+                        })
+                
+                # Trigger viva in background
+                asyncio.create_task(trigger_surprise_viva(session_id, exam_id, suspicious_events))
             
             # Send acknowledgment for exam events
             await websocket.send_json({
@@ -521,7 +767,6 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
             try:
                 # Decode base64 video data
                 video_data = base64.b64decode(data)
-                print(f"Video chunk received: base64 length={len(data)}, decoded size={len(video_data)}, original_size={original_size}")
                 
                 # Save chunk and append to master WebM file
                 chunk_path = await save_video_chunk(exam_id, session_id, video_data, video_dir, chunk_counter)
@@ -614,6 +859,32 @@ async def handle_exam_message(websocket: WebSocket, session_id: str, user_id: st
             "session_id": session_id
         })
     
+    elif message_type == "viva_completed":
+        # Mark viva as completed to allow future triggers if needed
+        viva_tracker.mark_viva_completed(session_id)
+        print(f"📝 Viva completed for session {session_id}")
+        
+        await websocket.send_json({
+            "type": "viva_completion_ack",
+            "message": "Viva completion acknowledged",
+            "session_id": session_id
+        })
+    
+    elif message_type == "surprise_viva":
+        # Frontend is sending back a surprise_viva message - this shouldn't happen normally
+        # This might be debug/test code or an echo. Just acknowledge it.
+        print(f"⚠️  Frontend sent surprise_viva message back (unexpected)")
+        print(f"    Message keys: {list(message.keys())}")
+        print(f"    Has instructions: {'instructions' in message}")
+        print(f"    Has questions: {'questions' in message}")
+        print(f"    This suggests the frontend is echoing our message back to us")
+        
+        await websocket.send_json({
+            "type": "surprise_viva_ack", 
+            "message": "Surprise viva message received but not expected from frontend",
+            "session_id": session_id
+        })
+    
     else:
         await websocket.send_json({
             "type": "error",
@@ -690,3 +961,36 @@ async def test_exam_endpoint(exam_id: str):
         "exam_id": exam_id,
         "timestamp": int(datetime.now().timestamp())
     })
+
+
+@router.post("/exam/{exam_id}/trigger-viva")
+async def manually_trigger_viva(exam_id: str, session_id: str = Query(...)):
+    """Manually trigger surprise viva for testing purposes"""
+    try:
+        # Create fake suspicious events for testing
+        test_events = [
+            {
+                'type': 'clipboard_paste',
+                'description': 'Clipboard paste detected',
+                'confidence': 0.9
+            },
+            {
+                'type': 'tab_switch', 
+                'description': 'User navigated away from exam',
+                'confidence': 0.85
+            }
+        ]
+        
+        success = await trigger_surprise_viva(session_id, exam_id, test_events)
+        
+        if success:
+            return JSONResponse({
+                "message": "Surprise viva triggered successfully",
+                "session_id": session_id,
+                "exam_id": exam_id
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to trigger viva")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error triggering viva: {str(e)}")
