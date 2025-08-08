@@ -1436,23 +1436,52 @@ async def create_custom_course(
             request.report_data
         )
         
-        # Step 4: Create temporary file for OpenAI
+        # Step 4: Create temporary PDF file for OpenAI (convert text to PDF)
         import openai
         openai_client = openai.AsyncOpenAI(api_key=openai_api_key)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
-            temp_file.write(reference_material)
-            temp_file.flush()
+        # Create a simple PDF from the reference material text
+        pdf_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Exam Analysis Reference Material</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }}
+                h1 {{ color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }}
+                h2 {{ color: #555; margin-top: 30px; }}
+                .section {{ margin-bottom: 20px; }}
+                pre {{ background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-wrap: break-word; white-space: pre-wrap; }}
+            </style>
+        </head>
+        <body>
+            <h1>Personalized Learning Reference Material</h1>
+            <div class="section">
+                <pre>{reference_material}</pre>
+            </div>
+        </body>
+        </html>
+        """
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as html_file:
+            html_file.write(pdf_html)
+            html_file.flush()
             
-            # Upload to OpenAI
-            with open(temp_file.name, 'rb') as f:
-                file = await openai_client.files.create(
-                    file=f,
-                    purpose="user_data",
-                )
-            
-            # Clean up temp file
-            os.unlink(temp_file.name)
+            # Convert HTML to PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as pdf_file:
+                weasyprint.HTML(html_file.name).write_pdf(pdf_file.name)
+                
+                # Upload PDF to OpenAI
+                with open(pdf_file.name, 'rb') as f:
+                    file = await openai_client.files.create(
+                        file=f,
+                        purpose="user_data",
+                    )
+                
+                # Clean up temp files
+                os.unlink(pdf_file.name)
+            os.unlink(html_file.name)
         
         # Step 5: Generate personalized course description and instructions
         weaknesses = overall_performance.get('weaknesses', [])
@@ -1876,15 +1905,23 @@ async def generate_personalized_course_complete(
         print(f"Starting complete course generation for course {course_id}")
         
         # Phase 1: Generate course structure
-        await _generate_course_structure(
-            course_description,
-            intended_audience,
-            instructions,
-            openai_file_id,
-            course_id,
-            job_uuid,
-            job_details
-        )
+        try:
+            print(f"Calling _generate_course_structure with openai_file_id: {openai_file_id}")
+            await _generate_course_structure(
+                course_description,
+                intended_audience,
+                instructions,
+                openai_file_id,
+                course_id,
+                job_uuid,
+                job_details
+            )
+            print(f"_generate_course_structure completed successfully for course {course_id}")
+        except Exception as e:
+            print(f"ERROR in _generate_course_structure for course {course_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise e
         
         print(f"Course structure completed for course {course_id}, starting task generation")
         
