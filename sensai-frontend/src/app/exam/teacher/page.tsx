@@ -130,12 +130,21 @@ export default function TeacherDashboardPage() {
                 Create and manage exams. Share exam links with students - anyone who isn't the creator can take the exam.
               </p>
             </div>
-            <Link
-              href="/exam/create"
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors"
-            >
-              Create New Exam
-            </Link>
+            <div className="flex items-center space-x-3">
+              <Link
+                href="/exam/generate"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-6 py-3 rounded-lg font-semibold transition-all duration-200 flex items-center space-x-2"
+              >
+                <TrendingUp size={18} />
+                <span>Generate AI Exam</span>
+              </Link>
+              <Link
+                href="/exam/create"
+                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Create Manual Exam
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -150,13 +159,22 @@ export default function TeacherDashboardPage() {
             {exams.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <Calendar size={48} className="mx-auto mb-4 opacity-50" />
-                <p>No exams created yet.</p>
-                <Link
-                  href="/exam/create"
-                  className="text-blue-400 hover:text-blue-300 underline mt-2 inline-block"
-                >
-                  Create your first exam
-                </Link>
+                <p className="mb-4">No exams created yet.</p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                  <Link
+                    href="/exam/generate"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    Generate AI Exam
+                  </Link>
+                  <span className="text-gray-500">or</span>
+                  <Link
+                    href="/exam/create"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Create Manual Exam
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">

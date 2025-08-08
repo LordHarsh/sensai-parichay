@@ -185,24 +185,40 @@ async def create_simple_evaluation_endpoint(
 async def get_simple_evaluation(exam_id: str, session_id: str):
     """Get stored evaluation"""
     try:
+        print(f"[SIMPLE-EVAL-GET] Looking for evaluation: exam_id={exam_id}, session_id={session_id}")
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
+            
+            # First, check if the session exists
             await cursor.execute(
-                f"SELECT metadata FROM {exam_sessions_table_name} WHERE id = ? AND exam_id = ?",
+                f"SELECT id, metadata FROM {exam_sessions_table_name} WHERE id = ? AND exam_id = ?",
                 (session_id, exam_id)
             )
             row = await cursor.fetchone()
+            print(f"[SIMPLE-EVAL-GET] Query result: {row}")
             
-            if not row or not row[0]:
+            if not row:
+                print(f"[SIMPLE-EVAL-GET] ERROR: Session not found for session_id={session_id}, exam_id={exam_id}")
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            if not row[1]:
+                print(f"[SIMPLE-EVAL-GET] ERROR: No evaluation data found for session_id={session_id}")
                 raise HTTPException(status_code=404, detail="No evaluation found")
             
-            evaluation = json.loads(row[0])
-            return {
-                "success": True,
-                "session_id": session_id,
-                "evaluation": evaluation
-            }
+            try:
+                evaluation = json.loads(row[1])
+                print(f"[SIMPLE-EVAL-GET] Successfully retrieved evaluation for session_id={session_id}")
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "evaluation": evaluation
+                }
+            except json.JSONDecodeError as e:
+                print(f"[SIMPLE-EVAL-GET] ERROR: Invalid JSON in metadata: {e}")
+                raise HTTPException(status_code=500, detail="Invalid evaluation data format")
             
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error retrieving evaluation: {str(e)}")
+        print(f"[SIMPLE-EVAL-GET] ERROR: Unexpected error retrieving evaluation: {str(e)}")
         raise HTTPException(status_code=404, detail="Evaluation not found")

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ExamQuestion } from "@/types/exam";
 import { useAuth } from "@/lib/auth";
 import { useSchools } from "@/lib/api";
+import { Sparkles } from "lucide-react";
 
 export default function CreateExamPage() {
   const router = useRouter();
@@ -19,6 +20,10 @@ export default function CreateExamPage() {
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
 
   // Cheating detection settings
   const [monitoringSettings, setMonitoringSettings] = useState({
@@ -44,6 +49,40 @@ export default function CreateExamPage() {
     shuffle_questions: false,
     show_timer: true
   });
+
+  // Fetch courses when user is available
+  useEffect(() => {
+    if (user?.id) {
+      fetchCourses();
+    }
+  }, [user?.id]);
+
+  const fetchCourses = async () => {
+    if (!user?.id) return;
+
+    setIsLoadingCourses(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/courses`);
+      if (response.ok) {
+        const coursesData = await response.json();
+        setCourses(coursesData);
+      } else {
+        console.error('Failed to fetch courses');
+        setCourses([]);
+      }
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      setCourses([]);
+    } finally {
+      setIsLoadingCourses(false);
+    }
+  };
+
+  // Handle organization change - reset course selection when org changes
+  const handleOrgChange = (orgId: number | null) => {
+    setSelectedOrgId(orgId);
+    setSelectedCourseId(null); // Reset course when org changes
+  };
 
   const addQuestion = (type: ExamQuestion['type']) => {
     const newQuestion: ExamQuestion = {
@@ -95,6 +134,51 @@ export default function CreateExamPage() {
       }
       return q;
     }));
+  };
+
+  const generateDescription = async () => {
+    if (!title.trim()) {
+      alert("Please enter an exam title first.");
+      return;
+    }
+
+    if (title.length < 3) {
+      alert("Exam title must be at least 3 characters long.");
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+
+    try {
+      const requestBody: any = { title };
+      
+      // Include course_id if a course is selected
+      if (selectedCourseId) {
+        requestBody.course_id = selectedCourseId;
+      }
+
+      const response = await fetch('/api/exam/generate-description', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || ''
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to generate description');
+      }
+
+      setDescription(result.description);
+    } catch (error) {
+      console.error('Error generating description:', error);
+      alert(`Failed to generate description: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingDescription(false);
+    }
   };
 
   const createExam = async () => {
@@ -165,14 +249,41 @@ export default function CreateExamPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Description *</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium">Description *</label>
+                  <button
+                    onClick={generateDescription}
+                    disabled={isGeneratingDescription || !title.trim() || isCreating}
+                    className="flex items-center space-x-1 px-2 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-xs font-medium transition-colors"
+                    title="Generate description based on exam title"
+                  >
+                    {isGeneratingDescription ? (
+                      <>
+                        <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={12} />
+                        <span>Auto-complete</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Enter exam description"
                   rows={3}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 resize-none"
+                  disabled={isGeneratingDescription}
                 />
+                {title.trim() && !description.trim() && (
+                  <p className="text-xs text-blue-400 mt-1 flex items-center">
+                    <Sparkles size={12} className="mr-1" />
+                    Tip: Click "Auto-complete" to generate a description based on your title{selectedCourseId ? ' and course content' : ''}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -324,23 +435,59 @@ export default function CreateExamPage() {
             )}
           </div>
 
-          {/* Organization Selection */}
+          {/* Organization and Course Selection */}
           <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Organization</h2>
-            <div>
-              <label className="block text-sm font-medium mb-2">Select Organization (Optional)</label>
-              <select
-                value={selectedOrgId || ""}
-                onChange={(e) => setSelectedOrgId(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Personal Exam (No Organization)</option>
-                {schools?.map((school) => (
-                  <option key={school.id} value={school.id}>
-                    {school.name}
-                  </option>
-                ))}
-              </select>
+            <h2 className="text-xl font-semibold mb-4">Organization & Course</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Select Organization (Optional)</label>
+                <select
+                  value={selectedOrgId || ""}
+                  onChange={(e) => handleOrgChange(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Personal Exam (No Organization)</option>
+                  {schools?.map((school) => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Course Selection */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Based on Course (Optional)
+                  <span className="text-xs text-gray-400 block mt-1">
+                    Generate exam content based on specific course materials and structure
+                  </span>
+                </label>
+                {isLoadingCourses ? (
+                  <div className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-400">
+                    Loading courses...
+                  </div>
+                ) : (
+                  <select
+                    value={selectedCourseId || ""}
+                    onChange={(e) => setSelectedCourseId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                    disabled={courses.length === 0}
+                  >
+                    <option value="">No Course (General Topic-Based)</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.name} ({course.org?.name || 'Personal'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {courses.length === 0 && !isLoadingCourses && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    No courses found. Create a course first to enable course-based exam generation.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
