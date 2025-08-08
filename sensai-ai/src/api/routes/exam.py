@@ -13,14 +13,19 @@ import os
 from datetime import datetime
 from api.models import (
     CreateExamRequest,
+    GenerateAIExamRequest,
     ExamSubmissionRequest, 
     ExamConfiguration,
     ExamSession,
     ExamQuestion,
     ExamTimelineEvent,
-    ExamAnalytics
+    ExamAnalytics,
+    ExamEvaluationRequest,
+    ExamEvaluationReport
 )
 from api.utils.db import get_new_db_connection
+from api.utils.event_scoring import EventScorer
+from api.llm import generate_exam_questions_with_openai, generate_exam_description_with_openai
 from api.config import (
     exams_table_name,
     exam_sessions_table_name,
@@ -71,6 +76,227 @@ async def create_exam(exam_request: CreateExamRequest, user_id: int = Header(...
     except Exception as e:
         print(f"Error creating exam: {e}")
         raise HTTPException(status_code=500, detail="Failed to create exam")
+
+
+@router.post("/generate", response_model=dict)
+async def generate_ai_exam(
+    exam_request: GenerateAIExamRequest, 
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate an AI-based exam using OpenAI GPT-4o.
+    
+    This endpoint takes in a title, description, and max number of questions,
+    then uses OpenAI to generate comprehensive exam questions and creates
+    the exam with the creator as the teacher.
+    """
+    try:
+        # Validate inputs
+        if not exam_request.title or not exam_request.description:
+            raise HTTPException(status_code=400, detail="Title and description are required")
+        
+        if exam_request.max_questions < 1 or exam_request.max_questions > 50:
+            raise HTTPException(status_code=400, detail="Number of questions must be between 1 and 50")
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
+        
+        # Generate questions using OpenAI
+        try:
+            generated_content = await generate_exam_questions_with_openai(
+                api_key=openai_api_key,
+                title=exam_request.title,
+                description=exam_request.description,
+                max_questions=exam_request.max_questions,
+                model="gpt-4o",
+                course_id=exam_request.course_id
+            )
+        except Exception as e:
+            print(f"Error generating questions with OpenAI: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate exam questions: {str(e)}")
+        
+        # Extract questions and metadata from generated content
+        questions = generated_content.get("questions", [])
+        if not questions:
+            raise HTTPException(status_code=500, detail="No questions were generated")
+        
+        exam_metadata = generated_content.get("exam_metadata", {})
+        
+        # Auto-calculate duration if not provided (based on suggested duration from AI or default estimation)
+        duration = exam_request.duration
+        if not duration:
+            # Use AI's suggested duration or estimate based on question types and points
+            duration = exam_metadata.get("suggested_duration", 60)
+            if not duration:
+                # Fallback estimation: ~2-3 minutes per question on average
+                duration = max(30, len(questions) * 3)
+        
+        # Convert generated questions to the expected format
+        formatted_questions = []
+        for i, q in enumerate(questions):
+            # Ensure each question has a unique ID
+            question_id = q.get("id", f"q{i+1}")
+            
+            # Build question object matching ExamQuestion schema
+            formatted_question = {
+                "id": question_id,
+                "type": q.get("type", "text"),
+                "question": q.get("question", ""),
+                "points": q.get("points", 1),
+                "time_limit": q.get("time_limit"),
+                "metadata": q.get("metadata", {})
+            }
+            
+            # Add type-specific fields
+            if q.get("type") == "multiple_choice" and q.get("options"):
+                formatted_question["options"] = [
+                    {
+                        "id": f"opt_{question_id}_{idx}",
+                        "text": option,
+                        "is_correct": option == q.get("correct_answer", "")
+                    }
+                    for idx, option in enumerate(q.get("options", []))
+                ]
+            
+            if q.get("correct_answer"):
+                formatted_question["correct_answer"] = q.get("correct_answer")
+            
+            formatted_questions.append(formatted_question)
+        
+        # Create default settings and monitoring if not provided
+        default_settings = {
+            "allow_tab_switch": False,
+            "max_tab_switches": 2,
+            "allow_copy_paste": False,
+            "require_camera": True,
+            "require_microphone": False,
+            "fullscreen_required": True,
+            "auto_submit": True,
+            "shuffle_questions": False,
+            "show_timer": True
+        }
+        
+        default_monitoring = {
+            "video_recording": True,
+            "audio_recording": True,
+            "screen_recording": False,
+            "keystroke_logging": True,
+            "mouse_tracking": True,
+            "face_detection": True,
+            "gaze_tracking": True,
+            "network_monitoring": True
+        }
+        
+        settings = {**default_settings, **exam_request.settings}
+        monitoring = {**default_monitoring, **exam_request.monitoring}
+        
+        # Generate exam ID
+        exam_id = str(uuid.uuid4())
+        
+        # Save to database
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            await cursor.execute(
+                f"""INSERT INTO {exams_table_name} 
+                    (id, title, description, duration, questions, settings, monitoring, org_id, created_by, role, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    exam_id,
+                    exam_request.title,
+                    exam_request.description,
+                    duration,
+                    json.dumps(formatted_questions),
+                    json.dumps(settings),
+                    json.dumps(monitoring),
+                    exam_request.org_id,
+                    user_id,
+                    'teacher',  # Creator is always teacher
+                    datetime.now(),
+                    datetime.now()
+                )
+            )
+            
+            await conn.commit()
+        
+        # Return success response with exam details
+        response = {
+            "id": exam_id,
+            "message": "AI exam generated and created successfully",
+            "exam_details": {
+                "title": exam_request.title,
+                "description": exam_request.description,
+                "duration": duration,
+                "questions_generated": len(formatted_questions),
+                "total_points": sum(q.get("points", 1) for q in formatted_questions),
+                "question_types": exam_metadata.get("question_distribution", {}),
+                "topics_covered": exam_metadata.get("topics_covered", []),
+                "difficulty_level": exam_metadata.get("difficulty_level", "Medium")
+            },
+            "ai_metadata": generated_content.get("generation_metadata", {})
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating AI exam: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate AI exam")
+
+
+@router.post("/generate-description", response_model=dict)
+async def generate_exam_description(
+    request: dict,
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate exam description based on title using OpenAI GPT-4o.
+    
+    This endpoint takes in a title and returns an AI-generated description
+    that matches the subject matter and scope indicated by the title.
+    """
+    try:
+        title = request.get("title", "").strip()
+        course_id = request.get("course_id")  # Optional course ID
+        
+        if not title:
+            raise HTTPException(status_code=400, detail="Title is required")
+        
+        if len(title) < 3:
+            raise HTTPException(status_code=400, detail="Title must be at least 3 characters long")
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured on server")
+        
+        # Generate description using OpenAI
+        try:
+            generated_description = await generate_exam_description_with_openai(
+                api_key=openai_api_key,
+                title=title,
+                model="gpt-4o",
+                course_id=course_id
+            )
+        except Exception as e:
+            print(f"Error generating description with OpenAI: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate description: {str(e)}")
+        
+        return {
+            "success": True,
+            "title": title,
+            "description": generated_description,
+            "message": "Description generated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating description: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate description")
 
 
 @router.get("/{exam_id}", response_model=dict)
@@ -236,7 +462,7 @@ async def submit_exam(exam_id: str, submission: ExamSubmissionRequest, user_id: 
                             exam_id, 
                             user_id,
                             datetime.now(),
-                            'active',
+                            'act    ive',
                             json.dumps({}),
                             datetime.now(),
                             datetime.now()
@@ -273,14 +499,25 @@ async def get_exam_sessions(exam_id: str):
         async with get_new_db_connection() as conn:
             cursor = await conn.cursor()
             
+            # Debug: Check what users exist in the database
+            await cursor.execute(f"SELECT id, email, first_name, last_name FROM {users_table_name} LIMIT 10")
+            users_debug = await cursor.fetchall()
+            print(f"Users in database: {users_debug}")
+            
+            # Debug: Check what user_ids are in sessions
+            await cursor.execute(f"SELECT DISTINCT user_id FROM {exam_sessions_table_name} WHERE exam_id = ?", (exam_id,))
+            session_user_ids = await cursor.fetchall()
+            print(f"User IDs in sessions: {session_user_ids}")
+            
             # Join with users table to get user information and count events
+            # Try multiple approaches: integer ID, string ID, or email match
             await cursor.execute(
                 f"""SELECT 
                     s.id, 
                     s.user_id, 
-                    u.email,
-                    u.first_name,
-                    u.last_name,
+                    COALESCE(u1.email, u2.email, u3.email) as user_email,
+                    COALESCE(u1.first_name, u2.first_name, u3.first_name) as user_first_name,
+                    COALESCE(u1.last_name, u2.last_name, u3.last_name) as user_last_name,
                     s.start_time, 
                     s.end_time, 
                     s.status, 
@@ -288,31 +525,42 @@ async def get_exam_sessions(exam_id: str):
                     s.created_at,
                     COUNT(e.id) as event_count
                     FROM {exam_sessions_table_name} s
-                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    LEFT JOIN {users_table_name} u1 ON CAST(s.user_id AS INTEGER) = u1.id
+                    LEFT JOIN {users_table_name} u2 ON s.user_id = CAST(u2.id AS TEXT)
+                    LEFT JOIN {users_table_name} u3 ON s.user_id = u3.email
                     LEFT JOIN {exam_events_table_name} e ON s.id = e.session_id
                     WHERE s.exam_id = ?
-                    GROUP BY s.id, s.user_id, u.email, u.first_name, u.last_name, s.start_time, s.end_time, s.status, s.score, s.created_at
+                    GROUP BY s.id, s.user_id, user_email, user_first_name, user_last_name, s.start_time, s.end_time, s.status, s.score, s.created_at
                     ORDER BY s.created_at DESC""",
                 (exam_id,)
             )
             
             sessions = []
             async for row in cursor:
+                print(f"Session row data: {row}")  # Debug logging
+                
                 # Create user display name: prefer "FirstName LastName", fallback to email
                 user_display = "Unknown User"
-                if row[2]:  # email exists
-                    if row[3] and row[4]:  # first_name and last_name exist
-                        user_display = f"{row[3]} {row[4]}"
-                    elif row[3]:  # only first_name exists
-                        user_display = row[3]
+                user_email = row[2]      # user_email
+                user_first_name = row[3] # user_first_name  
+                user_last_name = row[4]  # user_last_name
+                
+                if user_email:  # email exists
+                    if user_first_name and user_last_name:  # first_name and last_name exist
+                        user_display = f"{user_first_name} {user_last_name}"
+                    elif user_first_name:  # only first_name exists
+                        user_display = user_first_name
                     else:
-                        user_display = row[2]  # fallback to email
+                        user_display = user_email  # fallback to email
+                else:
+                    # Fallback: use user_id as display if no user info found
+                    user_display = f"User {row[1]}" if row[1] else "Unknown User"
                 
                 sessions.append({
                     "id": row[0],
                     "user_id": row[1], 
                     "user_display": user_display,
-                    "user_email": row[2],
+                    "user_email": user_email,
                     "start_time": row[5],
                     "end_time": row[6],
                     "status": row[7],
@@ -390,6 +638,285 @@ async def get_exam_results(exam_id: str, session_id: str):
         raise HTTPException(status_code=500, detail="Failed to fetch exam results")
 
 
+@router.post("/{exam_id}/evaluate/{session_id}", response_model=dict)
+async def evaluate_exam_comprehensive(
+    exam_id: str, 
+    session_id: str, 
+    user_id: int = Header(..., alias="x-user-id")
+):
+    """
+    Generate comprehensive AI-powered evaluation of exam performance
+    """
+    try:
+        from api.llm import evaluate_exam_with_openai
+        
+        # Get OpenAI API key from environment
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        # Log API key status (without revealing the key)
+        print(f"OpenAI API key loaded: {'Yes' if openai_api_key else 'No'}")
+        print(f"API key length: {len(openai_api_key) if openai_api_key else 0}")
+        print(f"API key starts with 'sk-': {openai_api_key.startswith('sk-') if openai_api_key else False}")
+        
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            # Get comprehensive exam session data
+            await cursor.execute(
+                f"""SELECT s.*, e.title, e.description, e.duration, e.questions, u.email, u.first_name, u.last_name
+                    FROM {exam_sessions_table_name} s
+                    JOIN {exams_table_name} e ON s.exam_id = e.id
+                    LEFT JOIN {users_table_name} u ON s.user_id = u.id
+                    WHERE s.id = ? AND s.exam_id = ?""",
+                (session_id, exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            # Calculate time taken in seconds
+            start_time = session_row[3] if session_row[3] else datetime.now()
+            end_time = session_row[4] if session_row[4] else datetime.now()
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
+            
+            time_taken_seconds = (end_time - start_time).total_seconds()
+            
+            # Parse exam data
+            print("Parsing exam data...")
+            questions = json.loads(session_row[12])  # e.questions
+            print(f"Found {len(questions)} questions in exam")
+            answers = json.loads(session_row[6] or "{}")  # s.answers
+            
+            # Create user display name
+            user_display = "Student"
+            if session_row[15]:  # email
+                if session_row[16] and session_row[17]:  # first_name and last_name
+                    user_display = f"{session_row[16]} {session_row[17]}"
+                elif session_row[16]:  # only first_name
+                    user_display = session_row[16]
+                else:
+                    user_display = session_row[15]  # fallback to email
+            
+            # Prepare questions and answers for analysis
+            questions_and_answers = []
+            for i, question in enumerate(questions, 1):
+                question_id = question.get('id', f'q{i}')
+                user_answer = answers.get(question_id, '')
+                correct_answer = question.get('correct_answer', '')
+                
+                # Determine if answer is correct
+                is_correct = False
+                if question.get('type') == 'multiple_choice':
+                    is_correct = user_answer == correct_answer
+                elif question.get('type') == 'text':
+                    # Simple text comparison - could be enhanced with fuzzy matching
+                    is_correct = user_answer.strip().lower() == correct_answer.lower() if correct_answer else bool(user_answer.strip())
+                else:
+                    # For essay/code questions, mark as answered if there's content
+                    is_correct = bool(user_answer.strip()) if user_answer else False
+                
+                questions_and_answers.append({
+                    "question_number": i,
+                    "question_id": question_id,
+                    "question_type": question.get('type', 'text'),
+                    "question_text": question.get('question', ''),
+                    "options": question.get('options', []),
+                    "correct_answer": correct_answer,
+                    "user_answer": user_answer,
+                    "is_correct": is_correct,
+                    "points": question.get('points', 1),
+                    "metadata": question.get('metadata', {})
+                })
+            
+            # Prepare evaluation context
+            evaluation_context = {
+                "session_id": session_id,
+                "exam_title": session_row[11],  # e.title
+                "exam_description": session_row[12] if len(session_row) > 12 else "",  # e.description
+                "duration": session_row[13],  # e.duration in minutes
+                "time_taken": time_taken_seconds,  # in seconds
+                "score": session_row[7] or 0,  # s.score
+                "user_name": user_display,
+                "questions": questions,
+                "questions_and_answers": questions_and_answers
+            }
+            
+            # Debug logging
+            print(f"Evaluation context prepared:")
+            print(f"- Exam title: {evaluation_context['exam_title']}")
+            print(f"- Questions count: {len(evaluation_context['questions'])}")
+            print(f"- Q&A count: {len(evaluation_context['questions_and_answers'])}")
+            print(f"- Score: {evaluation_context['score']}")
+            print(f"- Time taken: {evaluation_context['time_taken']} seconds")
+            
+            # Generate comprehensive evaluation using OpenAI
+            try:
+                evaluation_result = await evaluate_exam_with_openai(
+                    api_key=openai_api_key,
+                    exam_context=evaluation_context,
+                    model="gpt-4o"
+                )
+            except Exception as llm_error:
+                print(f"LLM evaluation failed: {str(llm_error)}")
+                # Provide a basic fallback evaluation
+                total_questions = len(questions_and_answers)
+                correct_answers = sum(1 for qa in questions_and_answers if qa.get('is_correct', False))
+                accuracy = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+                
+                evaluation_result = {
+                    "overall_summary": {
+                        "performance_level": "Good" if accuracy >= 70 else "Average" if accuracy >= 50 else "Below Average",
+                        "key_strengths": ["Basic completion"] if correct_answers > 0 else [],
+                        "key_weaknesses": ["Needs improvement"] if accuracy < 70 else [],
+                        "time_management": f"Completed in {time_taken_seconds/60:.1f} minutes",
+                        "overall_feedback": f"You scored {accuracy:.1f}% on this exam. {'Good work!' if accuracy >= 70 else 'Keep practicing to improve your performance.'}"
+                    },
+                    "question_by_question_analysis": [
+                        {
+                            "question_number": i+1,
+                            "status": "correct" if qa.get('is_correct', False) else "incorrect",
+                            "detailed_feedback": f"Question {i+1}: {'Correct answer!' if qa.get('is_correct', False) else 'Review this topic'}",
+                            "why_wrong": "" if qa.get('is_correct', False) else "Incorrect response provided",
+                            "better_approach": "Review course materials",
+                            "related_concepts": ["General knowledge"],
+                            "difficulty_level": "Medium"
+                        }
+                        for i, qa in enumerate(questions_and_answers)
+                    ],
+                    "knowledge_gaps": [
+                        {
+                            "topic": "General understanding",
+                            "severity": "Medium",
+                            "description": "Some concepts need reinforcement",
+                            "improvement_suggestions": "Review course materials and practice more"
+                        }
+                    ],
+                    "learning_recommendations": {
+                        "immediate_actions": ["Review incorrect answers", "Study course materials"],
+                        "study_plan": {
+                            "week_1": ["Review basics"],
+                            "week_2": ["Practice exercises"],
+                            "week_3": ["Advanced topics"],
+                            "week_4": ["Mock exams"]
+                        },
+                        "external_resources": [
+                            {
+                                "type": "Study Guide",
+                                "title": "Course Review Materials",
+                                "url": "#",
+                                "description": "Review your course materials"
+                            }
+                        ],
+                        "practice_suggestions": ["Take practice quizzes", "Review notes"]
+                    },
+                    "comparative_analysis": {
+                        "grade_interpretation": f"Score of {accuracy:.1f}%",
+                        "improvement_potential": "Good potential with focused study",
+                        "benchmark_comparison": "Compare with class average",
+                        "next_level_requirements": "Consistent practice needed"
+                    },
+                    "visual_insights": {
+                        "strength_areas": [{"topic": "Completion", "score": accuracy}],
+                        "improvement_areas": [{"topic": "Accuracy", "priority": "High" if accuracy < 50 else "Medium"}],
+                        "time_distribution": {
+                            "estimated_per_question": {},
+                            "efficiency_rating": "Average"
+                        }
+                    },
+                    "teacher_insights": {
+                        "teaching_recommendations": ["Focus on weak areas"],
+                        "classroom_interventions": ["Additional practice sessions"],
+                        "peer_collaboration": "Study groups recommended",
+                        "assessment_modifications": "Consider review sessions"
+                    },
+                    "evaluation_metadata": {
+                        "model_used": "fallback_evaluation",
+                        "evaluation_timestamp": datetime.now().isoformat(),
+                        "note": "This is a basic evaluation due to AI service unavailability"
+                    }
+                }
+                print("Using fallback evaluation due to LLM failure")
+            
+            
+            # Store evaluation result in database for future reference
+            evaluation_json = json.dumps(evaluation_result)
+            await cursor.execute(
+                f"""UPDATE {exam_sessions_table_name} 
+                    SET metadata = ? 
+                    WHERE id = ?""",
+                (evaluation_json, session_id)
+            )
+            await conn.commit()
+            
+            return {
+                "success": True,
+                "session_id": session_id,
+                "evaluation": evaluation_result,
+                "summary": {
+                    "exam_title": evaluation_context["exam_title"],
+                    "student": evaluation_context["user_name"],
+                    "score": evaluation_context["score"],
+                    "performance_level": evaluation_result.get("overall_summary", {}).get("performance_level", "Unknown"),
+                    "evaluation_generated_at": datetime.now().isoformat()
+                }
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating exam evaluation: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate evaluation: {str(e)}")
+
+
+@router.get("/{exam_id}/evaluation/{session_id}", response_model=dict)
+async def get_stored_evaluation(exam_id: str, session_id: str):
+    """
+    Retrieve previously generated evaluation from database
+    """
+    try:
+        async with get_new_db_connection() as conn:
+            cursor = await conn.cursor()
+            
+            await cursor.execute(
+                f"""SELECT metadata, score FROM {exam_sessions_table_name} 
+                    WHERE id = ? AND exam_id = ?""",
+                (session_id, exam_id)
+            )
+            
+            session_row = await cursor.fetchone()
+            if not session_row:
+                raise HTTPException(status_code=404, detail="Exam session not found")
+            
+            metadata = session_row[0]
+            if not metadata:
+                raise HTTPException(status_code=404, detail="No evaluation found. Generate evaluation first.")
+            
+            try:
+                evaluation = json.loads(metadata)
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "evaluation": evaluation,
+                    "score": session_row[1]
+                }
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail="Invalid evaluation data format")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching stored evaluation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch evaluation")
+
+
 @router.get("/{exam_id}/analytics/{session_id}", response_model=ExamAnalytics)
 async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Header(..., alias="x-user-id")):
     try:
@@ -436,75 +963,29 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                 event_type = row[0]
                 timestamp = row[2]
                 
-                # Calculate priority and flagging based on event type
-                priority = 1
-                confidence_score = 0.5
-                is_flagged = False
-                
-                # Define suspicious activities with priority and confidence
-                if event_type == 'tab_switch':
-                    priority = 3
-                    confidence_score = 0.9
-                    is_flagged = True
-                    flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'copy_paste':
-                    priority = 3
-                    confidence_score = 0.8
-                    is_flagged = True
-                    flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'rapid_paste_burst':
-                    priority = 3
-                    confidence_score = 0.95
-                    is_flagged = True
-                    flagged_events += 1
-                    high_priority_events += 1
-                elif event_type == 'content_similarity':
-                    similarity_score = event_data.get('similarity_score', 0)
-                    priority = 3 if similarity_score > 0.7 else 2
-                    confidence_score = similarity_score
-                    is_flagged = similarity_score > 0.5
-                    if is_flagged:
-                        flagged_events += 1
-                        if priority == 3:
-                            high_priority_events += 1
-                elif event_type == 'writing_style_drift':
-                    style_similarity = event_data.get('similarity_score', 0)
-                    priority = 2 if style_similarity < 0.3 else 1
-                    confidence_score = 1.0 - style_similarity  # Lower similarity = higher suspicion
-                    is_flagged = style_similarity < 0.4
-                    if is_flagged:
-                        flagged_events += 1
-                elif event_type == 'typing_pattern_anomaly':
-                    anomaly_confidence = event_data.get('confidence', 0)
-                    priority = 2
-                    confidence_score = anomaly_confidence
-                    is_flagged = anomaly_confidence > 0.7
-                    if is_flagged:
-                        flagged_events += 1
-                elif event_type == 'wpm_tracking':
-                    # WPM events are informational, not flagged
+                # Use EventScorer for enhanced priority and confidence calculation
+                try:
+                    priority, confidence_score, is_flagged, description = EventScorer.calculate_event_score(event_type, event_data)
+                except Exception as scorer_error:
+                    print(f"Warning: EventScorer error: {scorer_error}")
+                    # Provide fallback values
                     priority = 1
                     confidence_score = 0.5
                     is_flagged = False
-                elif event_type == 'keystroke_anomaly':
-                    priority = 2
-                    confidence_score = 0.7
-                    is_flagged = True
-                    flagged_events += 1
-                elif event_type == 'window_focus_lost':
-                    priority = 2
-                    confidence_score = 0.6
-                    is_flagged = True
-                    flagged_events += 1
-                elif event_type == 'face_not_detected':
-                    priority = 2
-                    confidence_score = 0.7
-                    is_flagged = True
-                    flagged_events += 1
+                    description = f"Event: {event_type}"
                 
-                confidence_scores.append(confidence_score)
+                # Ensure numeric values are not None
+                priority = priority if priority is not None else 1
+                confidence_score = confidence_score if confidence_score is not None else 0.5
+                is_flagged = is_flagged if is_flagged is not None else False
+                
+                if is_flagged:
+                    flagged_events += 1
+                    if priority == 3:
+                        high_priority_events += 1
+                
+                if confidence_score is not None:
+                    confidence_scores.append(confidence_score)
                 
                 # Create timeline event
                 timeline_event = ExamTimelineEvent(
@@ -588,9 +1069,41 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                         "details": event_data
                     })
             
-            # Calculate analytics
+            # Calculate analytics with pattern analysis
             avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
-            suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2)  # Scale suspicious activity
+            
+            # Ensure all values are properly initialized and not None
+            total_events = total_events if total_events is not None else 0
+            flagged_events = flagged_events if flagged_events is not None else 0
+            high_priority_events = high_priority_events if high_priority_events is not None else 0
+            
+            suspicious_score = min(1.0, flagged_events / max(total_events, 1) * 2) if total_events > 0 else 0.0  # Scale suspicious activity
+            
+            # Use EventScorer for pattern analysis
+            try:
+                all_events = [
+                    {
+                        'event_type': event.event_type,
+                        'event_data': event.event_data,
+                        'timestamp': event.timestamp,
+                        'confidence_score': event.confidence_score
+                    }
+                    for event in events
+                ]
+                
+                # Get suspicious patterns
+                suspicious_patterns = EventScorer.analyze_event_patterns(all_events) if hasattr(EventScorer, 'analyze_event_patterns') else {'patterns': []}
+                pattern_descriptions = []
+                for pattern in suspicious_patterns.get('patterns', []):
+                    pattern_descriptions.append({
+                        'pattern': pattern.get('type', 'unknown'),
+                        'severity': pattern.get('severity', 'unknown'),
+                        'description': pattern.get('description', ''),
+                        'details': pattern
+                    })
+            except Exception as pattern_error:
+                print(f"Warning: Pattern analysis error: {pattern_error}")
+                pattern_descriptions = []
             
             analytics = ExamAnalytics(
                 session_id=session_id,
@@ -600,7 +1113,8 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
                 average_confidence_score=avg_confidence,
                 suspicious_activity_score=suspicious_score,
                 timeline_events=events,
-                step_timeline=step_timeline  # Add step-by-step timeline
+                step_timeline=step_timeline,  # Add step-by-step timeline
+                suspicious_patterns=pattern_descriptions  # Add pattern analysis
             )
             
             return analytics
@@ -609,6 +1123,9 @@ async def get_exam_analytics(exam_id: str, session_id: str, user_id: int = Heade
         raise
     except Exception as e:
         print(f"Error fetching exam analytics: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 

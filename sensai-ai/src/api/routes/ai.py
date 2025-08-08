@@ -57,8 +57,28 @@ from api.utils.s3 import (
 )
 from api.utils.audio import prepare_audio_input_for_ai
 from api.settings import tracer
-from opentelemetry.trace import StatusCode, Status
-from openinference.instrumentation import using_attributes
+# Disabled OpenTelemetry imports to avoid connection errors
+# from opentelemetry.trace import StatusCode, Status
+# from openinference.instrumentation import using_attributes
+
+# Dummy status classes to avoid import errors
+class DummyStatusCode:
+    OK = "OK"
+    ERROR = "ERROR"
+
+class DummyStatus:
+    def __init__(self, status_code, description=""):
+        self.status_code = status_code
+        self.description = description
+
+StatusCode = DummyStatusCode()
+Status = DummyStatus
+
+def using_attributes(**kwargs):
+    """Dummy decorator to replace openinference using_attributes"""
+    def decorator(func):
+        return func
+    return decorator
 
 router = APIRouter()
 

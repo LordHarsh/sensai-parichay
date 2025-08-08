@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import AnswerAnalytics from "@/components/exam/AnswerAnalytics";
 import EventReplay from "@/components/exam/EventReplay";
+import EnhancedEventReplay from "@/components/exam/EnhancedEventReplay";
+import SimpleExamEvaluation from '@/components/exam/SimpleEvaluation';
+import ProfessionalExamReport from '@/components/exam/ProfessionalReport';
 
 interface ExamResults {
   session_id: string;
@@ -42,11 +45,12 @@ export default function ExamResultsPage() {
   const [analytics, setAnalytics] = useState<ExamAnalytics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'replay' | 'video'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'replay' | 'video' | 'enhanced_replay'>('overview');
   const [videoSpeed, setVideoSpeed] = useState(1);
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -76,10 +80,17 @@ export default function ExamResultsPage() {
 
   // Fetch video when video tab is selected
   useEffect(() => {
-    if (activeTab === 'video' && !videoBlobUrl && !videoError && results?.video_info && results.video_info.chunk_count > 0) {
+    if ((activeTab === 'video' || activeTab === 'enhanced_replay') && !videoBlobUrl && !videoError && results?.video_info && results.video_info.chunk_count > 0) {
       fetchVideoBlob();
     }
   }, [activeTab, videoBlobUrl, videoError, results]);
+
+  // Video seeking function for event replay
+  const handleVideoSeek = (timestamp: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = timestamp;
+    }
+  };
 
   const fetchResults = async () => {
     try {
@@ -312,13 +323,24 @@ export default function ExamResultsPage() {
           </div>
         )}
 
+        {/* Professional AI Evaluation Report */}
+        <div className="mb-8">
+          <ProfessionalExamReport
+            examId={examId as string}
+            sessionId={sessionId as string}
+            userSession={session}
+            examTitle={results.exam_title}
+            score={results.score}
+          />
+        </div>
+
         {/* Advanced Analytics Tabs (for teachers) */}
         {analytics && (
           <div className="mb-8">
-            <div className="flex border-b border-gray-700 mb-6">
+            <div className="flex flex-wrap border-b border-gray-700 mb-6">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`px-6 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors ${
                   activeTab === 'overview'
                     ? 'text-blue-400 border-b-2 border-blue-400'
                     : 'text-gray-400 hover:text-white'
@@ -328,7 +350,7 @@ export default function ExamResultsPage() {
               </button>
               <button
                 onClick={() => setActiveTab('analytics')}
-                className={`px-6 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors ${
                   activeTab === 'analytics'
                     ? 'text-blue-400 border-b-2 border-blue-400'
                     : 'text-gray-400 hover:text-white'
@@ -337,14 +359,24 @@ export default function ExamResultsPage() {
                 WPM Analytics
               </button>
               <button
+                onClick={() => setActiveTab('enhanced_replay')}
+                className={`px-4 py-3 font-medium transition-colors ${
+                  activeTab === 'enhanced_replay'
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                📽️ Event Replay + Video
+              </button>
+              <button
                 onClick={() => setActiveTab('replay')}
-                className={`px-6 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors ${
                   activeTab === 'replay'
                     ? 'text-blue-400 border-b-2 border-blue-400'
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Event Replay
+                Event Replay (Classic)
               </button>
               <button
                 onClick={() => {
@@ -357,13 +389,13 @@ export default function ExamResultsPage() {
                   setVideoLoading(true);
                   setVideoError(false);
                 }}
-                className={`px-6 py-3 font-medium transition-colors ${
+                className={`px-4 py-3 font-medium transition-colors ${
                   activeTab === 'video'
                     ? 'text-blue-400 border-b-2 border-blue-400'
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Video Recording
+                Video Only
               </button>
             </div>
 
@@ -463,6 +495,25 @@ export default function ExamResultsPage() {
               />
             )}
 
+            {activeTab === 'enhanced_replay' && (
+              <EnhancedEventReplay
+                sessionId={analytics.session_id}
+                events={analytics.timeline_events.map(event => ({
+                  type: event.event_type,
+                  timestamp: event.timestamp,
+                  data: event.event_data,
+                  id: event.id,
+                  priority: event.priority,
+                  is_flagged: event.is_flagged,
+                  confidence_score: event.confidence_score
+                }))}
+                examId={examId as string}
+                videoBlobUrl={videoBlobUrl}
+                onVideoSeek={handleVideoSeek}
+                examStartTime={results.start_time}
+              />
+            )}
+
             {activeTab === 'video' && (
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <h3 className="text-xl font-semibold text-white mb-4">Exam Video Recording</h3>
@@ -509,6 +560,7 @@ export default function ExamResultsPage() {
                         </div>
                       ) : (
                         <video 
+                          ref={videoRef}
                           key={videoBlobUrl} // Force re-render when blob URL changes
                           controls 
                           className="w-full h-auto max-h-96 rounded-lg"
@@ -549,8 +601,7 @@ export default function ExamResultsPage() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button 
                           onClick={() => {
-                            const video = document.querySelector('video') as HTMLVideoElement;
-                            if (video) video.currentTime = 0;
+                            if (videoRef.current) videoRef.current.currentTime = 0;
                           }}
                           className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
                         >
@@ -565,15 +616,14 @@ export default function ExamResultsPage() {
                         </a>
                         <button 
                           onClick={() => {
-                            const video = document.querySelector('video') as HTMLVideoElement;
-                            if (video) {
+                            if (videoRef.current) {
                               let newSpeed = 1;
                               if (videoSpeed === 1) newSpeed = 1.25;
                               else if (videoSpeed === 1.25) newSpeed = 1.5;
                               else if (videoSpeed === 1.5) newSpeed = 2;
                               else newSpeed = 1;
                               
-                              video.playbackRate = newSpeed;
+                              videoRef.current.playbackRate = newSpeed;
                               setVideoSpeed(newSpeed);
                             }
                           }}
